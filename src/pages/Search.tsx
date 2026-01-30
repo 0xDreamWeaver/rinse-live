@@ -1,14 +1,144 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { Search as SearchIcon, Plus, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search as SearchIcon, Plus, Sparkles, Loader2, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAppStore } from '../store';
+import type { ActiveDownload } from '../types';
+
+// Progress popup component
+function DownloadProgressPopup({ download }: { download: ActiveDownload }) {
+  const getStageInfo = () => {
+    switch (download.stage) {
+      case 'searching':
+        return {
+          icon: <Loader2 className="w-5 h-5 animate-spin" />,
+          text: `Searching for "${download.query}"...`,
+          subtext: download.resultsCount !== undefined
+            ? `Found ${download.resultsCount} files from ${download.usersCount || 0} users`
+            : 'Querying network...',
+          color: 'text-blue-400',
+          bgColor: 'border-blue-500/50 bg-blue-500/10',
+        };
+      case 'selecting':
+        return {
+          icon: <Loader2 className="w-5 h-5 animate-spin" />,
+          text: `Found ${download.resultsCount || 0} results`,
+          subtext: download.selectedFile
+            ? `Selected: ${download.selectedFile} from ${download.selectedUser}`
+            : 'Selecting best file...',
+          color: 'text-blue-400',
+          bgColor: 'border-blue-500/50 bg-blue-500/10',
+        };
+      case 'downloading':
+        return {
+          icon: <Download className="w-5 h-5" />,
+          text: `Downloading: ${download.filename || 'file'}`,
+          subtext: download.progressPct !== undefined
+            ? `${download.progressPct.toFixed(1)}% (${((download.bytesDownloaded || 0) / 1024 / 1024).toFixed(2)} / ${((download.totalBytes || 0) / 1024 / 1024).toFixed(2)} MB) - ${(download.speedKbps || 0).toFixed(1)} KB/s`
+            : 'Starting download...',
+          color: 'text-terminal-green',
+          bgColor: 'border-terminal-green/50 bg-terminal-green/10',
+          progress: download.progressPct,
+        };
+      case 'completed':
+        return {
+          icon: <CheckCircle2 className="w-5 h-5" />,
+          text: 'Download complete!',
+          subtext: download.filename || 'File ready',
+          color: 'text-terminal-green',
+          bgColor: 'border-terminal-green/50 bg-terminal-green/10',
+          showDownload: true,
+        };
+      case 'failed':
+        return {
+          icon: <XCircle className="w-5 h-5" />,
+          text: 'Download failed',
+          subtext: download.error || 'Unknown error',
+          color: 'text-red-500',
+          bgColor: 'border-red-500/50 bg-red-500/10',
+        };
+      case 'queued':
+        return {
+          icon: <Clock className="w-5 h-5" />,
+          text: 'Download queued',
+          subtext: download.error || 'Waiting for peer...',
+          color: 'text-yellow-500',
+          bgColor: 'border-yellow-500/50 bg-yellow-500/10',
+        };
+      default:
+        return {
+          icon: <Loader2 className="w-5 h-5 animate-spin" />,
+          text: 'Processing...',
+          subtext: '',
+          color: 'text-gray-400',
+          bgColor: 'border-gray-500/50 bg-gray-500/10',
+        };
+    }
+  };
+
+  const info = getStageInfo();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className={`relative p-4 border ${info.bgColor} rounded font-mono overflow-hidden`}
+    >
+      <div className="flex items-start gap-3">
+        <div className={info.color}>{info.icon}</div>
+        <div className="flex-1 min-w-0">
+          <div className={`font-bold ${info.color}`}>{info.text}</div>
+          <div className="text-sm text-gray-400 truncate">{info.subtext}</div>
+        </div>
+        {info.showDownload && download.itemId > 0 && (
+          <a
+            href={api.getItemDownloadUrl(download.itemId)}
+            download
+            className="btn-primary text-sm px-3 py-1"
+          >
+            Download
+          </a>
+        )}
+      </div>
+      {/* Progress bar */}
+      {info.progress !== undefined && (
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-dark-600">
+          <motion.div
+            className="h-full bg-terminal-green"
+            initial={{ width: 0 }}
+            animate={{ width: `${info.progress}%` }}
+            transition={{ duration: 0.3 }}
+          />
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// Audio format options
+type AudioFormat = 'any' | 'mp3' | 'flac' | 'm4a' | 'wav';
+const FORMAT_OPTIONS: { id: AudioFormat; label: string }[] = [
+  { id: 'any', label: 'Any' },
+  { id: 'mp3', label: 'MP3' },
+  { id: 'flac', label: 'FLAC' },
+  { id: 'm4a', label: 'M4A' },
+  { id: 'wav', label: 'WAV' },
+];
 
 export function Search() {
   const [mode, setMode] = useState<'item' | 'list'>('item');
   const [query, setQuery] = useState('');
+  const [format, setFormat] = useState<AudioFormat>('any');
   const [listQueries, setListQueries] = useState<string[]>(['']);
   const [listName, setListName] = useState('');
+
+  const { activeDownloads } = useAppStore();
+
+  // Get the most recent active download (item_id 0 is for search-in-progress)
+  const currentDownload = Array.from(activeDownloads.values())
+    .sort((a, b) => b.itemId - a.itemId)[0];
 
   const { data: items } = useQuery({
     queryKey: ['items'],
@@ -16,15 +146,16 @@ export function Search() {
   });
 
   const searchItemMutation = useMutation({
-    mutationFn: (query: string) => api.searchItem(query),
+    mutationFn: ({ query, format }: { query: string; format: AudioFormat }) =>
+      api.searchItem(query, format === 'any' ? undefined : format),
     onSuccess: () => {
       setQuery('');
     },
   });
 
   const searchListMutation = useMutation({
-    mutationFn: (data: { queries: string[]; name?: string }) =>
-      api.searchList(data.queries, data.name),
+    mutationFn: (data: { queries: string[]; name?: string; format?: string }) =>
+      api.searchList(data.queries, data.name, data.format),
     onSuccess: () => {
       setListQueries(['']);
       setListName('');
@@ -34,7 +165,7 @@ export function Search() {
   const handleSearchItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
-      searchItemMutation.mutate(query);
+      searchItemMutation.mutate({ query, format });
     }
   };
 
@@ -45,6 +176,7 @@ export function Search() {
       searchListMutation.mutate({
         queries: validQueries,
         name: listName || undefined,
+        format: format === 'any' ? undefined : format,
       });
     }
   };
@@ -123,6 +255,32 @@ export function Search() {
         ))}
       </motion.div>
 
+      {/* Format Selection */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        className="flex items-center gap-4"
+      >
+        <span className="text-sm font-mono text-gray-500">Format:</span>
+        <div className="flex gap-1">
+          {FORMAT_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setFormat(opt.id)}
+              className={`px-3 py-1.5 font-mono text-sm transition-all duration-200 border ${
+                format === opt.id
+                  ? 'border-terminal-green text-terminal-green bg-terminal-green/10'
+                  : 'border-dark-500 text-gray-500 hover:text-gray-300 hover:border-gray-500'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </motion.div>
+
       {/* Search Forms */}
       <motion.div
         key={mode}
@@ -192,15 +350,12 @@ export function Search() {
               </div>
             )}
 
-            {searchItemMutation.isSuccess && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="p-4 border border-terminal-green bg-terminal-green/10 text-terminal-green font-mono text-sm"
-              >
-                Successfully queued download!
-              </motion.div>
-            )}
+            {/* Download progress popup */}
+            <AnimatePresence>
+              {currentDownload && (
+                <DownloadProgressPopup download={currentDownload} />
+              )}
+            </AnimatePresence>
           </form>
         ) : (
           <form onSubmit={handleSearchList} className="space-y-6">

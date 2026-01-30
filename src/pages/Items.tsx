@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   useReactTable,
@@ -9,7 +9,7 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table';
 import { motion } from 'framer-motion';
-import { Download, Trash2, Search, CheckSquare, Square } from 'lucide-react';
+import { Download, Trash2, Search, CheckSquare, Square, Loader2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store';
 import { Link } from 'react-router-dom';
@@ -21,13 +21,34 @@ export function Items() {
   const [globalFilter, setGlobalFilter] = useState('');
   const queryClient = useQueryClient();
 
-  const { selectedItemIds, toggleItemSelection, clearItemSelection } =
+  const { selectedItemIds, toggleItemSelection, clearItemSelection, itemsNeedRefresh, setItemsNeedRefresh, activeDownloads, progressUpdates } =
     useAppStore();
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['items'],
     queryFn: () => api.getItems(),
   });
+
+  // Auto-refresh when WebSocket indicates items changed
+  useEffect(() => {
+    if (itemsNeedRefresh) {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      setItemsNeedRefresh(false);
+    }
+  }, [itemsNeedRefresh, queryClient, setItemsNeedRefresh]);
+
+  // Get progress for a specific item from WebSocket updates
+  const getItemProgress = (itemId: number) => {
+    const download = activeDownloads.get(itemId);
+    if (download?.stage === 'downloading') {
+      return download.progressPct || 0;
+    }
+    const progress = progressUpdates.get(itemId);
+    if (progress && progress.status === 'downloading') {
+      return progress.progress * 100;
+    }
+    return null;
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (ids: number[]) => api.batchDeleteItems(ids),
@@ -109,16 +130,27 @@ export function Items() {
         header: 'Status',
         cell: (info) => {
           const status = info.getValue();
+          const itemId = info.row.original.id;
+          const progress = getItemProgress(itemId);
           const colors: Record<string, string> = {
             pending: 'text-yellow-500',
             downloading: 'text-blue-500',
             completed: 'text-terminal-green',
             failed: 'text-red-500',
+            queued: 'text-orange-500',
           };
           return (
-            <span className={`font-mono font-bold ${colors[status]}`}>
-              {status.toUpperCase()}
-            </span>
+            <div className="flex items-center gap-2">
+              {status === 'downloading' && (
+                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+              )}
+              <span className={`font-mono font-bold ${colors[status] || 'text-gray-400'}`}>
+                {status.toUpperCase()}
+                {progress !== null && status === 'downloading' && (
+                  <span className="ml-1 text-xs font-normal">({progress.toFixed(0)}%)</span>
+                )}
+              </span>
+            </div>
           );
         },
       }),
@@ -248,21 +280,40 @@ export function Items() {
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row, index) => (
-              <motion.tr
-                key={row.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="border-b border-dark-600 hover:bg-dark-700 transition-colors"
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3 text-sm">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </motion.tr>
-            ))}
+            {table.getRowModel().rows.map((row, index) => {
+              const itemId = row.original.id;
+              const progress = getItemProgress(itemId);
+              const isDownloading = row.original.download_status === 'downloading';
+
+              return (
+                <motion.tr
+                  key={row.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="border-b border-dark-600 hover:bg-dark-700 transition-colors relative"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="px-4 py-3 text-sm">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                  {/* Progress bar at bottom of row */}
+                  {isDownloading && progress !== null && (
+                    <td colSpan={row.getVisibleCells().length} className="absolute bottom-0 left-0 right-0 h-0.5 p-0">
+                      <div className="h-full bg-dark-500">
+                        <motion.div
+                          className="h-full bg-terminal-green"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progress}%` }}
+                          transition={{ duration: 0.3 }}
+                        />
+                      </div>
+                    </td>
+                  )}
+                </motion.tr>
+              );
+            })}
           </tbody>
         </table>
 

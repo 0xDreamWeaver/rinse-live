@@ -127,10 +127,10 @@ class ApiClient {
     return this.request(`/api/items/${id}`);
   }
 
-  async searchItem(query: string): Promise<Item> {
+  async searchItem(query: string, format?: string): Promise<Item> {
     return this.request('/api/items/search', {
       method: 'POST',
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, format }),
     });
   }
 
@@ -162,10 +162,10 @@ class ApiClient {
     return this.request(`/api/lists/${id}`);
   }
 
-  async searchList(queries: string[], name?: string): Promise<List> {
+  async searchList(queries: string[], name?: string, format?: string): Promise<List> {
     return this.request('/api/lists/search', {
       method: 'POST',
-      body: JSON.stringify({ queries, name }),
+      body: JSON.stringify({ queries, name, format }),
     });
   }
 

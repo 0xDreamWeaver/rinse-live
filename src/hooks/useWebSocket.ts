@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store';
-import type { ProgressUpdate } from '../types';
+import type { WsEvent } from '../types';
 
 export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null);
@@ -18,10 +18,11 @@ export function useWebSocket() {
 
         socket.onmessage = (event) => {
           try {
-            const update: ProgressUpdate = JSON.parse(event.data);
-            useAppStore.getState().setProgressUpdate(update);
+            const wsEvent: WsEvent = JSON.parse(event.data);
+            console.log('WebSocket event:', wsEvent.type, wsEvent);
+            useAppStore.getState().handleWsEvent(wsEvent);
           } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
+            console.error('Failed to parse WebSocket message:', error, event.data);
           }
         };
 
