@@ -147,7 +147,8 @@ export type WsEvent =
 
 // Current download/search state for UI
 export interface ActiveDownload {
-  itemId: number;
+  trackingId: string; // Unique client-side ID for tracking (primary key)
+  itemId: number; // Backend item ID (0 until item is created)
   query: string;
   stage: 'searching' | 'selecting' | 'downloading' | 'completed' | 'failed' | 'queued' | 'duplicate';
   filename?: string;
@@ -160,4 +161,48 @@ export interface ActiveDownload {
   progressPct?: number;
   speedKbps?: number;
   error?: string;
+  queueId?: number; // Queue ID from enqueue response
+  createdAt: number; // Timestamp for sorting
+}
+
+// Queue API response types
+export interface EnqueueSearchResponse {
+  queue_id: number;
+  query: string;
+  position: number;
+}
+
+export interface EnqueueListResponse {
+  list_id: number;
+  list_name: string;
+  queue_ids: number[];
+  total_queued: number;
+}
+
+export interface QueueStatusResponse {
+  pending: number;
+  processing: number;
+  active_downloads: number;
+  user_pending: number;
+  user_processing: number;
+}
+
+export interface QueuedSearch {
+  id: number;
+  user_id: number;
+  list_id: number | null;
+  item_id: number | null;
+  query: string;
+  format: string | null;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface QueueItemsResponse {
+  items: QueuedSearch[];
+  pending: number;
+  processing: number;
 }

@@ -1,4 +1,7 @@
-import type { Item, List, ListWithItems, User } from '../types';
+import type {
+  Item, List, ListWithItems, User,
+  EnqueueSearchResponse, EnqueueListResponse, QueueStatusResponse, QueueItemsResponse
+} from '../types';
 import { useAppStore } from '../store';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -186,6 +189,35 @@ class ApiClient {
     const token = useAppStore.getState().token;
     const url = `${this.baseUrl}/api/lists/${id}/download`;
     return token ? `${url}?token=${token}` : url;
+  }
+
+  // Queue API (new non-blocking search system)
+  async queueSearch(query: string, format?: string): Promise<EnqueueSearchResponse> {
+    return this.request('/api/queue/search', {
+      method: 'POST',
+      body: JSON.stringify({ query, format }),
+    });
+  }
+
+  async queueList(queries: string[], name?: string, format?: string): Promise<EnqueueListResponse> {
+    return this.request('/api/queue/list', {
+      method: 'POST',
+      body: JSON.stringify({ queries, name, format }),
+    });
+  }
+
+  async getQueueStatus(): Promise<QueueStatusResponse> {
+    return this.request('/api/queue');
+  }
+
+  async getQueueItems(): Promise<QueueItemsResponse> {
+    return this.request('/api/queue/items');
+  }
+
+  async cancelQueuedSearch(queueId: number): Promise<{ cancelled: boolean; message: string }> {
+    return this.request(`/api/queue/${queueId}`, {
+      method: 'DELETE',
+    });
   }
 
   // WebSocket

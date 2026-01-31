@@ -1,14 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search as SearchIcon, Plus, Sparkles, Loader2, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
+import { Search as SearchIcon, Plus, Sparkles, Loader2, CheckCircle2, XCircle, Clock, Download, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store';
 import { Link } from 'react-router-dom';
 import type { ActiveDownload } from '../types';
 
 // Progress popup component
-function DownloadProgressPopup({ download, format }: { download: ActiveDownload; format: AudioFormat }) {
+function DownloadProgressPopup({
+  download,
+  format,
+  onDismiss
+}: {
+  download: ActiveDownload;
+  format: AudioFormat;
+  onDismiss?: () => void;
+}) {
   const getStageInfo = () => {
     switch (download.stage) {
       case 'searching':
@@ -20,6 +28,7 @@ function DownloadProgressPopup({ download, format }: { download: ActiveDownload;
             : 'Querying network...',
           color: 'text-blue-400',
           bgColor: 'border-blue-500/50 bg-blue-500/10',
+          canDismiss: false,
         };
       case 'selecting':
         return {
@@ -30,6 +39,7 @@ function DownloadProgressPopup({ download, format }: { download: ActiveDownload;
             : 'Selecting best file...',
           color: 'text-blue-400',
           bgColor: 'border-blue-500/50 bg-blue-500/10',
+          canDismiss: false,
         };
       case 'downloading':
         return {
@@ -41,6 +51,7 @@ function DownloadProgressPopup({ download, format }: { download: ActiveDownload;
           color: 'text-terminal-green',
           bgColor: 'border-terminal-green/50 bg-terminal-green/10',
           progress: download.progressPct,
+          canDismiss: false,
         };
       case 'completed':
         return {
@@ -50,6 +61,7 @@ function DownloadProgressPopup({ download, format }: { download: ActiveDownload;
           color: 'text-terminal-green',
           bgColor: 'border-terminal-green/50 bg-terminal-green/10',
           showDownload: true,
+          canDismiss: true,
         };
       case 'failed':
         return {
@@ -58,6 +70,7 @@ function DownloadProgressPopup({ download, format }: { download: ActiveDownload;
           subtext: download.error || 'Unknown error',
           color: 'text-red-500',
           bgColor: 'border-red-500/50 bg-red-500/10',
+          canDismiss: true,
         };
       case 'queued':
         return {
@@ -66,6 +79,7 @@ function DownloadProgressPopup({ download, format }: { download: ActiveDownload;
           subtext: download.error || 'Waiting for peer...',
           color: 'text-yellow-500',
           bgColor: 'border-yellow-500/50 bg-yellow-500/10',
+          canDismiss: false,
         };
       case 'duplicate':
         return {
@@ -74,6 +88,7 @@ function DownloadProgressPopup({ download, format }: { download: ActiveDownload;
           subtext: download.filename || 'File already downloaded',
           color: 'text-cyan-400',
           bgColor: 'border-cyan-500/50 bg-cyan-500/10',
+          canDismiss: true,
         };
       default:
         return {
@@ -82,6 +97,7 @@ function DownloadProgressPopup({ download, format }: { download: ActiveDownload;
           subtext: '',
           color: 'text-gray-400',
           bgColor: 'border-gray-500/50 bg-gray-500/10',
+          canDismiss: false,
         };
     }
   };
@@ -109,6 +125,15 @@ function DownloadProgressPopup({ download, format }: { download: ActiveDownload;
           >
             Download
           </a>
+        )}
+        {info.canDismiss && onDismiss && (
+          <button
+            onClick={onDismiss}
+            className="p-1 text-gray-400 transition-colors hover:text-gray-200"
+            title="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
         )}
       </div>
       {/* Progress bar */}
@@ -158,28 +183,36 @@ export function Search() {
   const [listQueries, setListQueries] = useState<string[]>(['']);
   const [listName, setListName] = useState('');
 
-  const { activeDownloads } = useAppStore();
+  const { activeDownloads, dismissActiveDownload, addPendingSearch } = useAppStore();
 
-  // Get the most recent active download (item_id 0 is for search-in-progress)
-  const currentDownload = Array.from(activeDownloads.values())
-    .sort((a, b) => b.itemId - a.itemId)[0];
+  // Get all active downloads sorted by creation time (newest first)
+  const allDownloads = Array.from(activeDownloads.values())
+    .sort((a, b) => b.createdAt - a.createdAt);
 
   const { data: items } = useQuery({
     queryKey: ['items'],
     queryFn: () => api.getItems(),
   });
 
-  const searchItemMutation = useMutation({
-    mutationFn: ({ query, format }: { query: string; format: AudioFormat }) =>
-      api.searchItem(query, format === 'any' ? undefined : format),
+  const queueSearchMutation = useMutation({
+    mutationFn: async ({ query, format }: { query: string; format: AudioFormat }) => {
+      // Add pending search to store immediately for UI feedback
+      addPendingSearch(query);
+      // Then queue the actual search
+      return api.queueSearch(query, format === 'any' ? undefined : format);
+    },
     onSuccess: () => {
       setQuery('');
     },
   });
 
-  const searchListMutation = useMutation({
-    mutationFn: (data: { queries: string[]; name?: string; format?: string }) =>
-      api.searchList(data.queries, data.name, data.format),
+  const queueListMutation = useMutation({
+    mutationFn: async (data: { queries: string[]; name?: string; format?: string }) => {
+      // Add pending searches to store for each query
+      data.queries.forEach(q => addPendingSearch(q));
+      // Then queue the actual list
+      return api.queueList(data.queries, data.name, data.format);
+    },
     onSuccess: () => {
       setListQueries(['']);
       setListName('');
@@ -189,7 +222,7 @@ export function Search() {
   const handleSearchItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
-      searchItemMutation.mutate({ query, format });
+      queueSearchMutation.mutate({ query, format });
     }
   };
 
@@ -197,7 +230,7 @@ export function Search() {
     e.preventDefault();
     const validQueries = listQueries.filter((q) => q.trim());
     if (validQueries.length > 0) {
-      searchListMutation.mutate({
+      queueListMutation.mutate({
         queries: validQueries,
         name: listName || undefined,
         format: format === 'any' ? undefined : format,
@@ -333,7 +366,6 @@ export function Search() {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Artist - Track Name"
                   className="pl-12 w-full input-terminal"
-                  disabled={searchItemMutation.isPending}
                 />
               </div>
             </motion.div>
@@ -365,22 +397,31 @@ export function Search() {
 
             <button
               type="submit"
-              disabled={!query.trim() || searchItemMutation.isPending}
+              disabled={!query.trim()}
               className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {searchItemMutation.isPending ? 'SEARCHING...' : 'SEARCH & DOWNLOAD'}
+              SEARCH & DOWNLOAD
             </button>
 
-            {searchItemMutation.isError && (
+            {queueSearchMutation.isError && (
               <div className="p-4 font-mono text-sm text-red-500 border border-red-500 bg-red-500/10">
-                Error: {(searchItemMutation.error as Error).message}
+                Error: {(queueSearchMutation.error as Error).message}
               </div>
             )}
 
-            {/* Download progress popup */}
+            {/* Download progress popups - show all active downloads */}
             <AnimatePresence>
-              {currentDownload && (
-                <DownloadProgressPopup download={currentDownload} format={format} />
+              {allDownloads.length > 0 && (
+                <div className="space-y-3">
+                  {allDownloads.map((download) => (
+                    <DownloadProgressPopup
+                      key={download.trackingId}
+                      download={download}
+                      format={format}
+                      onDismiss={() => dismissActiveDownload(download.trackingId)}
+                    />
+                  ))}
+                </div>
               )}
             </AnimatePresence>
           </form>
@@ -396,7 +437,6 @@ export function Search() {
                 onChange={(e) => setListName(e.target.value)}
                 placeholder="My Playlist"
                 className="w-full input-terminal"
-                disabled={searchListMutation.isPending}
               />
             </div>
 
@@ -418,14 +458,12 @@ export function Search() {
                     onChange={(e) => updateListQuery(index, e.target.value)}
                     placeholder={`Track ${index + 1}`}
                     className="flex-1 input-terminal"
-                    disabled={searchListMutation.isPending}
                   />
                   {listQueries.length > 1 && (
                     <button
                       type="button"
                       onClick={() => removeListQuery(index)}
                       className="px-3 btn-secondary"
-                      disabled={searchListMutation.isPending}
                     >
                       ✕
                     </button>
@@ -437,7 +475,6 @@ export function Search() {
                 type="button"
                 onClick={addListQuery}
                 className="flex gap-2 justify-center items-center w-full btn-secondary"
-                disabled={searchListMutation.isPending}
               >
                 <Plus className="w-4 h-4" />
                 Add Query
@@ -446,32 +483,43 @@ export function Search() {
 
             <button
               type="submit"
-              disabled={
-                listQueries.filter((q) => q.trim()).length === 0 ||
-                searchListMutation.isPending
-              }
+              disabled={listQueries.filter((q) => q.trim()).length === 0}
               className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {searchListMutation.isPending
-                ? 'SEARCHING...'
-                : `SEARCH & DOWNLOAD ${listQueries.filter((q) => q.trim()).length} ITEMS`}
+              {`SEARCH & DOWNLOAD ${listQueries.filter((q) => q.trim()).length} ITEMS`}
             </button>
 
-            {searchListMutation.isError && (
+            {queueListMutation.isError && (
               <div className="p-4 font-mono text-sm text-red-500 border border-red-500 bg-red-500/10">
-                Error: {(searchListMutation.error as Error).message}
+                Error: {(queueListMutation.error as Error).message}
               </div>
             )}
 
-            {searchListMutation.isSuccess && (
+            {queueListMutation.isSuccess && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className="p-4 font-mono text-sm border border-terminal-green bg-terminal-green/10 text-terminal-green"
               >
-                Successfully queued list download!
+                Successfully queued {queueListMutation.data?.total_queued || 0} items for download!
               </motion.div>
             )}
+
+            {/* Download progress popups for list mode too */}
+            <AnimatePresence>
+              {allDownloads.length > 0 && (
+                <div className="space-y-3">
+                  {allDownloads.map((download) => (
+                    <DownloadProgressPopup
+                      key={download.trackingId}
+                      download={download}
+                      format={format}
+                      onDismiss={() => dismissActiveDownload(download.trackingId)}
+                    />
+                  ))}
+                </div>
+              )}
+            </AnimatePresence>
           </form>
         )}
       </motion.div>
