@@ -76,7 +76,7 @@ export function Items() {
                 });
               }
             }}
-            className="text-terminal-green hover:text-terminal-green-dark transition-colors"
+            className="transition-colors text-terminal-green hover:text-terminal-green-dark"
           >
             {selectedItemIds.length === items.length && items.length > 0 ? (
               <CheckSquare className="w-5 h-5" />
@@ -88,7 +88,7 @@ export function Items() {
         cell: ({ row }) => (
           <button
             onClick={() => toggleItemSelection(row.original.id)}
-            className="text-terminal-green hover:text-terminal-green-dark transition-colors"
+            className="transition-colors text-terminal-green hover:text-terminal-green-dark"
           >
             {selectedItemIds.includes(row.original.id) ? (
               <CheckSquare className="w-5 h-5" />
@@ -103,8 +103,7 @@ export function Items() {
         cell: (info) => (
           <Link
             to={`/items/${info.row.original.id}`}
-            className="font-mono text-terminal-green hover:text-terminal-green-dark
-                     hover:underline transition-colors"
+            className="font-mono transition-colors text-terminal-green hover:text-terminal-green-dark hover:underline"
           >
             {info.getValue()}
           </Link>
@@ -140,9 +139,9 @@ export function Items() {
             queued: 'text-orange-500',
           };
           return (
-            <div className="flex items-center gap-2">
+            <div className="flex gap-2 items-center">
               {status === 'downloading' && (
-                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
               )}
               <span className={`font-mono font-bold ${colors[status] || 'text-gray-400'}`}>
                 {status.toUpperCase()}
@@ -163,7 +162,7 @@ export function Items() {
               <a
                 href={api.getItemDownloadUrl(row.original.id)}
                 download
-                className="btn-secondary px-3 py-1 text-sm"
+                className="px-3 py-1 text-sm btn-secondary"
               >
                 <Download className="w-4 h-4" />
               </a>
@@ -195,8 +194,8 @@ export function Items() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="font-mono text-terminal-green animate-pulse">
+      <div className="flex justify-center items-center h-64">
+        <div className="font-mono animate-pulse text-terminal-green">
           LOADING...
         </div>
       </div>
@@ -209,14 +208,23 @@ export function Items() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+        className="flex justify-between items-center"
       >
         <div>
-          <h1 className="text-4xl font-display font-bold text-terminal-green">
-            Items
-          </h1>
-          <p className="text-gray-500 text-sm mt-2">
-            {items.length} total items
+          <div className="flex gap-1 items-start">
+            <h1 className="text-4xl font-bold font-display text-terminal-green">
+              Tracks
+            </h1>
+            <span className="font-mono text-2xl font-bold text-gray-500">
+              [
+                <span className="text-gray-200">
+                  {items.length}
+                </span>
+              ]
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-gray-500">
+            View your downloaded tracks and queued downloads
           </p>
         </div>
 
@@ -226,7 +234,7 @@ export function Items() {
             animate={{ scale: 1, opacity: 1 }}
             onClick={handleBatchDelete}
             disabled={deleteMutation.isPending}
-            className="btn-secondary flex items-center gap-2"
+            className="flex gap-2 items-center btn-secondary"
           >
             <Trash2 className="w-4 h-4" />
             Delete {selectedItemIds.length}
@@ -241,13 +249,13 @@ export function Items() {
         transition={{ delay: 0.1 }}
       >
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+          <Search className="absolute left-4 top-1/2 w-5 h-5 text-gray-500 -translate-y-1/2" />
           <input
             type="text"
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             placeholder="Filter items..."
-            className="input-terminal w-full pl-12"
+            className="pl-12 w-full input-terminal"
           />
         </div>
       </motion.div>
@@ -257,7 +265,7 @@ export function Items() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="card-terminal overflow-x-auto"
+        className="overflow-x-auto card-terminal"
       >
         <table className="w-full">
           <thead>
@@ -266,7 +274,7 @@ export function Items() {
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="text-left px-4 py-3 font-mono text-terminal-green text-sm"
+                    className="px-4 py-3 font-mono text-sm text-left text-terminal-green"
                   >
                     {header.isPlaceholder
                       ? null
@@ -291,7 +299,7 @@ export function Items() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="border-b border-dark-600 hover:bg-dark-700 transition-colors relative"
+                  className="relative border-b transition-colors border-dark-600 hover:bg-dark-700"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3 text-sm">
@@ -318,7 +326,7 @@ export function Items() {
         </table>
 
         {table.getRowModel().rows.length === 0 && (
-          <div className="text-center py-12 text-gray-500 font-mono">
+          <div className="py-12 font-mono text-center text-gray-500">
             No items found
           </div>
         )}

@@ -4,16 +4,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search as SearchIcon, Plus, Sparkles, Loader2, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store';
+import { Link } from 'react-router-dom';
 import type { ActiveDownload } from '../types';
 
 // Progress popup component
-function DownloadProgressPopup({ download }: { download: ActiveDownload }) {
+function DownloadProgressPopup({ download, format }: { download: ActiveDownload; format: AudioFormat }) {
   const getStageInfo = () => {
     switch (download.stage) {
       case 'searching':
         return {
           icon: <Loader2 className="w-5 h-5 animate-spin" />,
-          text: `Searching for "${download.query}"...`,
+          text: `Searching for "${download.query}" in ${format} format`,
           subtext: download.resultsCount !== undefined
             ? `Found ${download.resultsCount} files from ${download.usersCount || 0} users`
             : 'Querying network...',
@@ -66,6 +67,14 @@ function DownloadProgressPopup({ download }: { download: ActiveDownload }) {
           color: 'text-yellow-500',
           bgColor: 'border-yellow-500/50 bg-yellow-500/10',
         };
+      case 'duplicate':
+        return {
+          icon: <CheckCircle2 className="w-5 h-5" />,
+          text: 'Already in library',
+          subtext: download.filename || 'File already downloaded',
+          color: 'text-cyan-400',
+          bgColor: 'border-cyan-500/50 bg-cyan-500/10',
+        };
       default:
         return {
           icon: <Loader2 className="w-5 h-5 animate-spin" />,
@@ -86,7 +95,7 @@ function DownloadProgressPopup({ download }: { download: ActiveDownload }) {
       exit={{ opacity: 0, y: -10 }}
       className={`relative p-4 border ${info.bgColor} rounded font-mono overflow-hidden`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex gap-3 items-start">
         <div className={info.color}>{info.icon}</div>
         <div className="flex-1 min-w-0">
           <div className={`font-bold ${info.color}`}>{info.text}</div>
@@ -96,7 +105,7 @@ function DownloadProgressPopup({ download }: { download: ActiveDownload }) {
           <a
             href={api.getItemDownloadUrl(download.itemId)}
             download
-            className="btn-primary text-sm px-3 py-1"
+            className="px-3 py-1 text-sm btn-primary"
           >
             Download
           </a>
@@ -104,7 +113,7 @@ function DownloadProgressPopup({ download }: { download: ActiveDownload }) {
       </div>
       {/* Progress bar */}
       {info.progress !== undefined && (
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-dark-600">
+        <div className="absolute right-0 bottom-0 left-0 h-1 bg-dark-600">
           <motion.div
             className="h-full bg-terminal-green"
             initial={{ width: 0 }}
@@ -113,6 +122,19 @@ function DownloadProgressPopup({ download }: { download: ActiveDownload }) {
           />
         </div>
       )}
+    </motion.div>
+  );
+}
+
+function SearchFilterBox({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <motion.div className="flex relative p-2 bg-opacity-0 border bg-dark-700 border-dark-500"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.125 }}
+    >
+      <span className="absolute top-0 left-0 px-1 -mt-3 ml-1 font-mono text-sm text-gray-500 bg-dark-900">{label}</span>
+      {children}
     </motion.div>
   );
 }
@@ -211,10 +233,10 @@ export function Search() {
         animate={{ opacity: 1, y: 0 }}
         className="space-y-2"
       >
-        <h1 className="text-4xl font-display font-bold text-terminal-green">
+        <h1 className="text-4xl font-bold font-display text-terminal-green">
           Search Network
         </h1>
-        <p className="text-gray-500 text-sm">
+        <p className="text-sm text-gray-500">
           Find and download files from the Soulseek network
         </p>
       </motion.div>
@@ -224,7 +246,7 @@ export function Search() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="flex gap-2"
+        className="flex gap-2 items-center"
       >
         {[
           { id: 'item', label: 'Single Item' },
@@ -253,59 +275,66 @@ export function Search() {
             <span className="relative z-10">{tab.label}</span>
           </button>
         ))}
-      </motion.div>
-
-      {/* Format Selection */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="flex items-center gap-4"
-      >
-        <span className="text-sm font-mono text-gray-500">Format:</span>
-        <div className="flex gap-1">
-          {FORMAT_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => setFormat(opt.id)}
-              className={`px-3 py-1.5 font-mono text-sm transition-all duration-200 border ${
-                format === opt.id
-                  ? 'border-terminal-green text-terminal-green bg-terminal-green/10'
-                  : 'border-dark-500 text-gray-500 hover:text-gray-300 hover:border-gray-500'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        {/* * Divider *
+        <div className="w-[1px] h-8 bg-dark-500 mx-2" /> */}
+        {/* Format Selection */}
+        <SearchFilterBox label="Format">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="flex gap-4 items-center"
+          >
+            <div className="flex gap-1">
+              {FORMAT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setFormat(opt.id)}
+                  className={`px-3 py-1.5 font-mono text-sm transition-all duration-200 border ${
+                    format === opt.id
+                      ? 'border-terminal-green text-terminal-green bg-terminal-green/10'
+                      : 'border-dark-500 text-gray-500 hover:text-gray-300 hover:border-gray-500'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        </SearchFilterBox>
       </motion.div>
 
       {/* Search Forms */}
       <motion.div
         key={mode}
-        initial={{ opacity: 0, x: mode === 'item' ? -20 : 20 }}
-        animate={{ opacity: 1, x: 0 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
         className="card-terminal"
       >
         {mode === 'item' ? (
           <form onSubmit={handleSearchItem} className="space-y-6">
-            <div>
-              <label className="block text-sm font-mono text-terminal-green mb-2">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+            >
+              <label className="block mb-2 font-mono text-sm text-terminal-green">
                 Query
               </label>
               <div className="relative">
-                <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <SearchIcon className="absolute left-4 top-1/2 w-5 h-5 text-gray-500 -translate-y-1/2" />
                 <input
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Artist - Track Name"
-                  className="input-terminal w-full pl-12"
+                  className="pl-12 w-full input-terminal"
                   disabled={searchItemMutation.isPending}
                 />
               </div>
-            </div>
+            </motion.div>
 
             {/* Suggestions */}
             {query && suggestions.length > 0 && (
@@ -314,23 +343,19 @@ export function Search() {
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-2"
               >
-                <div className="flex items-center gap-2 text-sm font-mono text-gray-500">
+                <div className="flex gap-2 items-center font-mono text-sm text-gray-500">
                   <Sparkles className="w-4 h-4" />
                   <span>Already Downloaded</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {suggestions.slice(0, 5).map((item) => (
-                    <button
+                    <Link
                       key={item.id}
-                      type="button"
-                      onClick={() => setQuery(item.filename)}
-                      className="px-3 py-1 bg-dark-700 border border-terminal-green/30
-                               text-terminal-green text-sm font-mono
-                               hover:border-terminal-green hover:bg-dark-600
-                               transition-all duration-200"
+                      to={`/items/${item.id}`}
+                      className="px-3 py-1 font-mono text-sm border transition-all duration-200 bg-dark-700 border-terminal-green/30 text-terminal-green hover:border-terminal-green hover:bg-dark-600"
                     >
                       {item.filename}
-                    </button>
+                    </Link>
                   ))}
                 </div>
               </motion.div>
@@ -339,13 +364,13 @@ export function Search() {
             <button
               type="submit"
               disabled={!query.trim() || searchItemMutation.isPending}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {searchItemMutation.isPending ? 'SEARCHING...' : 'SEARCH & DOWNLOAD'}
             </button>
 
             {searchItemMutation.isError && (
-              <div className="p-4 border border-red-500 bg-red-500/10 text-red-500 font-mono text-sm">
+              <div className="p-4 font-mono text-sm text-red-500 border border-red-500 bg-red-500/10">
                 Error: {(searchItemMutation.error as Error).message}
               </div>
             )}
@@ -353,14 +378,14 @@ export function Search() {
             {/* Download progress popup */}
             <AnimatePresence>
               {currentDownload && (
-                <DownloadProgressPopup download={currentDownload} />
+                <DownloadProgressPopup download={currentDownload} format={format} />
               )}
             </AnimatePresence>
           </form>
         ) : (
           <form onSubmit={handleSearchList} className="space-y-6">
             <div>
-              <label className="block text-sm font-mono text-terminal-green mb-2">
+              <label className="block mb-2 font-mono text-sm text-terminal-green">
                 List Name (Optional)
               </label>
               <input
@@ -368,13 +393,13 @@ export function Search() {
                 value={listName}
                 onChange={(e) => setListName(e.target.value)}
                 placeholder="My Playlist"
-                className="input-terminal w-full"
+                className="w-full input-terminal"
                 disabled={searchListMutation.isPending}
               />
             </div>
 
             <div className="space-y-3">
-              <label className="block text-sm font-mono text-terminal-green">
+              <label className="block font-mono text-sm text-terminal-green">
                 Queries ({listQueries.filter((q) => q.trim()).length})
               </label>
 
@@ -390,14 +415,14 @@ export function Search() {
                     value={query}
                     onChange={(e) => updateListQuery(index, e.target.value)}
                     placeholder={`Track ${index + 1}`}
-                    className="input-terminal flex-1"
+                    className="flex-1 input-terminal"
                     disabled={searchListMutation.isPending}
                   />
                   {listQueries.length > 1 && (
                     <button
                       type="button"
                       onClick={() => removeListQuery(index)}
-                      className="btn-secondary px-3"
+                      className="px-3 btn-secondary"
                       disabled={searchListMutation.isPending}
                     >
                       ✕
@@ -409,7 +434,7 @@ export function Search() {
               <button
                 type="button"
                 onClick={addListQuery}
-                className="btn-secondary w-full flex items-center justify-center gap-2"
+                className="flex gap-2 justify-center items-center w-full btn-secondary"
                 disabled={searchListMutation.isPending}
               >
                 <Plus className="w-4 h-4" />
@@ -423,7 +448,7 @@ export function Search() {
                 listQueries.filter((q) => q.trim()).length === 0 ||
                 searchListMutation.isPending
               }
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {searchListMutation.isPending
                 ? 'SEARCHING...'
@@ -431,7 +456,7 @@ export function Search() {
             </button>
 
             {searchListMutation.isError && (
-              <div className="p-4 border border-red-500 bg-red-500/10 text-red-500 font-mono text-sm">
+              <div className="p-4 font-mono text-sm text-red-500 border border-red-500 bg-red-500/10">
                 Error: {(searchListMutation.error as Error).message}
               </div>
             )}
@@ -440,7 +465,7 @@ export function Search() {
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="p-4 border border-terminal-green bg-terminal-green/10 text-terminal-green font-mono text-sm"
+                className="p-4 font-mono text-sm border border-terminal-green bg-terminal-green/10 text-terminal-green"
               >
                 Successfully queued list download!
               </motion.div>

@@ -25,7 +25,7 @@ export default {
       fontFamily: {
         mono: ['"Inconsolata"', 'ui-monospace', 'monospace'],
         sans: ['"Zalando Sans"', 'system-ui', 'sans-serif'],
-        display: ['"Zalando Sans SemiExpanded"', 'system-ui', 'sans-serif'],
+        display: ['"Zalando Sans Expanded"', 'system-ui', 'sans-serif'],
       },
       animation: {
         'scan': 'scan 8s linear infinite',

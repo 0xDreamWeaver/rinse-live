@@ -54,8 +54,8 @@ export function Lists() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="font-mono text-terminal-green animate-pulse">
+      <div className="flex justify-center items-center h-64">
+        <div className="font-mono animate-pulse text-terminal-green">
           LOADING...
         </div>
       </div>
@@ -68,14 +68,23 @@ export function Lists() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+        className="flex justify-between items-center"
       >
         <div>
-          <h1 className="text-4xl font-display font-bold text-terminal-green">
-            Lists
-          </h1>
-          <p className="text-gray-500 text-sm mt-2">
-            {lists.length} total lists
+          <div className="flex gap-1 items-start">
+            <h1 className="text-4xl font-bold font-display text-terminal-green">
+              Lists
+            </h1>
+            <span className="font-mono text-2xl font-bold text-gray-500">
+              [
+                <span className="text-gray-200">
+                  {lists.length}
+                </span>
+              ]
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-gray-500">
+            View and manage your track lists
           </p>
         </div>
 
@@ -85,7 +94,7 @@ export function Lists() {
             animate={{ scale: 1, opacity: 1 }}
             onClick={handleBatchDelete}
             disabled={deleteMutation.isPending}
-            className="btn-secondary flex items-center gap-2"
+            className="flex gap-2 items-center btn-secondary"
           >
             <Trash2 className="w-4 h-4" />
             Delete {selectedListIds.length}
@@ -100,123 +109,132 @@ export function Lists() {
         transition={{ delay: 0.1 }}
       >
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+          <Search className="absolute left-4 top-1/2 w-5 h-5 text-gray-500 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Filter lists..."
-            className="input-terminal w-full pl-12"
+            className="pl-12 w-full input-terminal"
           />
         </div>
       </motion.div>
 
       {/* Lists Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredLists.map((list, index) => {
-          const progress =
-            list.total_items > 0
-              ? (list.completed_items / list.total_items) * 100
-              : 0;
-          const isSelected = selectedListIds.includes(list.id);
+      {filteredLists.length > 0 ? (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
+        >
+          {filteredLists.map((list, index) => {
+            const progress =
+              list.total_items > 0
+                ? (list.completed_items / list.total_items) * 100
+                : 0;
+            const isSelected = selectedListIds.includes(list.id);
 
-          return (
-            <motion.div
-              key={list.id}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: index * 0.05 }}
-              className={`card-terminal relative ${
-                isSelected ? 'border-terminal-green terminal-box-glow' : ''
-              }`}
-            >
-              {/* Selection Checkbox */}
-              <button
-                onClick={() => toggleListSelection(list.id)}
-                className="absolute top-4 right-4 text-terminal-green hover:text-terminal-green-dark transition-colors"
+            return (
+              <motion.div
+                key={list.id}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: index * 0.05 }}
+                className={`card-terminal relative ${
+                  isSelected ? 'border-terminal-green terminal-box-glow' : ''}`}
               >
-                {isSelected ? (
-                  <CheckSquare className="w-5 h-5" />
-                ) : (
-                  <Square className="w-5 h-5" />
-                )}
-              </button>
-
-              {/* List Info */}
-              <Link to={`/lists/${list.id}`} className="block space-y-4">
-                <div>
-                  <h3 className="text-xl font-display font-bold text-terminal-green">
-                    {list.name}
-                  </h3>
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mt-2">
-                    <Calendar className="w-4 h-4" />
-                    <span className="font-mono">
-                      {new Date(list.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 text-sm font-mono">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-gray-500" />
-                    <span className="text-gray-400">
-                      {list.total_items} items
-                    </span>
-                  </div>
-                  <div className={`font-bold ${getStatusColor(list.status)}`}>
-                    {list.status.toUpperCase()}
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                {list.status === 'downloading' || list.status === 'partial' ? (
-                  <div className="space-y-1">
-                    <div className="h-2 bg-dark-700 border border-dark-500 overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${progress}%` }}
-                        className="h-full bg-terminal-green"
-                      />
-                    </div>
-                    <div className="text-xs font-mono text-gray-500 text-right">
-                      {list.completed_items}/{list.total_items} (
-                      {progress.toFixed(0)}%)
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Stats */}
-                <div className="flex gap-4 text-xs font-mono">
-                  <div className="text-terminal-green">
-                    ✓ {list.completed_items}
-                  </div>
-                  {list.failed_items > 0 && (
-                    <div className="text-red-500">✗ {list.failed_items}</div>
-                  )}
-                </div>
-              </Link>
-
-              {/* Download Button */}
-              {list.status === 'completed' && (
-                <a
-                  href={api.getListDownloadUrl(list.id)}
-                  download
-                  className="btn-primary w-full mt-4 flex items-center justify-center gap-2"
-                  onClick={(e) => e.stopPropagation()}
+                {/* Selection Checkbox */}
+                <button
+                  onClick={() => toggleListSelection(list.id)}
+                  className="absolute top-4 right-4 transition-colors text-terminal-green hover:text-terminal-green-dark"
                 >
-                  <Download className="w-4 h-4" />
-                  DOWNLOAD ZIP
-                </a>
-              )}
-            </motion.div>
-          );
-        })}
-      </div>
+                  {isSelected ? (
+                    <CheckSquare className="w-5 h-5" />
+                  ) : (
+                    <Square className="w-5 h-5" />
+                  )}
+                </button>
 
-      {filteredLists.length === 0 && (
-        <div className="card-terminal text-center py-12 text-gray-500 font-mono">
+                {/* List Info */}
+                <Link to={`/lists/${list.id}`} className="block space-y-4">
+                  <div>
+                    <h3 className="text-xl font-bold font-display text-terminal-green">
+                      {list.name}
+                    </h3>
+                    <div className="flex gap-2 items-center mt-2 text-sm text-gray-500">
+                      <Calendar className="w-4 h-4" />
+                      <span className="font-mono">
+                        {new Date(list.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 items-center font-mono text-sm">
+                    <div className="flex gap-2 items-center">
+                      <FileText className="w-4 h-4 text-gray-500" />
+                      <span className="text-gray-400">
+                        {list.total_items} items
+                      </span>
+                    </div>
+                    <div className={`font-bold ${getStatusColor(list.status)}`}>
+                      {list.status.toUpperCase()}
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  {list.status === 'downloading' || list.status === 'partial' ? (
+                    <div className="space-y-1">
+                      <div className="overflow-hidden h-2 border bg-dark-700 border-dark-500">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progress}%` }}
+                          className="h-full bg-terminal-green"
+                        />
+                      </div>
+                      <div className="font-mono text-xs text-right text-gray-500">
+                        {list.completed_items}/{list.total_items} (
+                        {progress.toFixed(0)}%)
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Stats */}
+                  <div className="flex gap-4 font-mono text-xs">
+                    <div className="text-terminal-green">
+                      ✓ {list.completed_items}
+                    </div>
+                    {list.failed_items > 0 && (
+                      <div className="text-red-500">✗ {list.failed_items}</div>
+                    )}
+                  </div>
+                </Link>
+
+                {/* Download Button */}
+                {list.status === 'completed' && (
+                  <a
+                    href={api.getListDownloadUrl(list.id)}
+                    download
+                    className="flex gap-2 justify-center items-center mt-4 w-full btn-primary"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Download className="w-4 h-4" />
+                    DOWNLOAD ZIP
+                  </a>
+                )}
+              </motion.div>
+            );
+          })}
+        </motion.div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="py-12 font-mono text-center text-gray-500 card-terminal"
+        >
           No lists found
-        </div>
+        </motion.div>
       )}
     </div>
   );

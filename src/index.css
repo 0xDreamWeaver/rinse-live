@@ -15,15 +15,15 @@
 }
 
 @font-face {
-  font-family: 'Zalando Sans SemiExpanded';
-  src: url('/fonts/Zalando_Sans_SemiExpanded/ZalandoSansSemiExpanded-VariableFont_wght.ttf') format('truetype');
+  font-family: 'Zalando Sans Expanded';
+  src: url('/fonts/Zalando_Sans_Expanded/ZalandoSansExpanded-VariableFont_wght.ttf') format('truetype');
   font-weight: 300 800;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Zalando Sans SemiExpanded';
-  src: url('/fonts/Zalando_Sans_SemiExpanded/ZalandoSansSemiExpanded-Italic-VariableFont_wght.ttf') format('truetype');
+  font-family: 'Zalando Sans Expanded';
+  src: url('/fonts/Zalando_Sans_Expanded/ZalandoSansExpanded-Italic-VariableFont_wght.ttf') format('truetype');
   font-weight: 300 800;
   font-style: italic;
 }

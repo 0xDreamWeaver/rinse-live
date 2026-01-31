@@ -82,6 +82,12 @@ export const useAppStore = create<AppStore>()(
 
           switch (event.type) {
             case 'search_started': {
+              // Clear any previous finished downloads so the new search is visible
+              for (const [key, download] of downloads.entries()) {
+                if (['completed', 'failed', 'duplicate'].includes(download.stage)) {
+                  downloads.delete(key);
+                }
+              }
               downloads.set(event.item_id || 0, {
                 itemId: event.item_id || 0,
                 query: event.query,
@@ -175,6 +181,16 @@ export const useAppStore = create<AppStore>()(
                 });
               }
               needsRefresh = true;
+              break;
+            }
+            case 'duplicate_found': {
+              // Item already exists in library
+              downloads.set(event.item_id || 0, {
+                itemId: event.item_id,
+                query: event.query,
+                stage: 'duplicate',
+                filename: event.filename,
+              });
               break;
             }
             case 'item_updated': {

@@ -58,7 +58,8 @@ export type WsEventType =
   | 'download_completed'
   | 'download_failed'
   | 'download_queued'
-  | 'item_updated';
+  | 'item_updated'
+  | 'duplicate_found';
 
 export interface WsSearchStarted {
   type: 'search_started';
@@ -125,6 +126,13 @@ export interface WsItemUpdated {
   progress: number;
 }
 
+export interface WsDuplicateFound {
+  type: 'duplicate_found';
+  item_id: number;
+  filename: string;
+  query: string;
+}
+
 export type WsEvent =
   | WsSearchStarted
   | WsSearchProgress
@@ -134,13 +142,14 @@ export type WsEvent =
   | WsDownloadCompleted
   | WsDownloadFailed
   | WsDownloadQueued
-  | WsItemUpdated;
+  | WsItemUpdated
+  | WsDuplicateFound;
 
 // Current download/search state for UI
 export interface ActiveDownload {
   itemId: number;
   query: string;
-  stage: 'searching' | 'selecting' | 'downloading' | 'completed' | 'failed' | 'queued';
+  stage: 'searching' | 'selecting' | 'downloading' | 'completed' | 'failed' | 'queued' | 'duplicate';
   filename?: string;
   resultsCount?: number;
   usersCount?: number;
