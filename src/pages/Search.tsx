@@ -140,13 +140,15 @@ function SearchFilterBox({ label, children }: { label: string; children: React.R
 }
 
 // Audio format options
-type AudioFormat = 'any' | 'mp3' | 'flac' | 'm4a' | 'wav';
+type AudioFormat = 'any' | 'mp3' | 'flac' | 'm4a' | 'wav' | 'aiff' | 'ogg';
 const FORMAT_OPTIONS: { id: AudioFormat; label: string }[] = [
   { id: 'any', label: 'Any' },
   { id: 'mp3', label: 'MP3' },
   { id: 'flac', label: 'FLAC' },
   { id: 'm4a', label: 'M4A' },
   { id: 'wav', label: 'WAV' },
+  { id: 'aiff', label: 'AIFF' },
+  { id: 'ogg', label: 'OGG' },
 ];
 
 export function Search() {

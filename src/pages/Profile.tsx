@@ -1,7 +1,10 @@
 import { motion } from 'framer-motion';
 import { User, Zap, Settings } from 'lucide-react';
+import { useAuth } from '../store';
 
 export function Profile() {
+  const { user } = useAuth();
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -31,7 +34,7 @@ export function Profile() {
           </div>
           <div>
             <div className="text-xl font-display font-bold text-terminal-green">
-              Guest User
+              {user?.username || 'Guest User'}
             </div>
             <div className="text-sm text-gray-500">
               Connected to Soulseek network
