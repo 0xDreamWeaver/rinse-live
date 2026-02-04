@@ -1,11 +1,13 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Download, ArrowLeft, Clock, HardDrive, Music, User } from 'lucide-react';
+import { Download, ArrowLeft, Clock, HardDrive, Music, User, Play, Pause } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAudioPlayer } from '../store';
 
 export function ItemDetail() {
   const { id } = useParams<{ id: string }>();
+  const { currentTrack, isPlaying, playTrack, pausePlayback } = useAudioPlayer();
 
   const { data: item, isLoading } = useQuery({
     queryKey: ['item', id],
@@ -43,11 +45,13 @@ export function ItemDetail() {
   ];
 
   const getStatusColor = () => {
-    const colors = {
+    const colors: Record<string, string> = {
       pending: 'text-yellow-500',
       downloading: 'text-blue-500',
       completed: 'text-terminal-green',
       failed: 'text-red-500',
+      queued: 'text-orange-500',
+      deleted: 'text-gray-500',
     };
     return colors[item.download_status] || 'text-gray-500';
   };
@@ -68,11 +72,36 @@ export function ItemDetail() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <h1 className="text-4xl font-mono font-bold text-terminal-green break-all">
-          {item.filename}
-        </h1>
-        <div className={`mt-2 font-mono font-bold ${getStatusColor()}`}>
-          {item.download_status.toUpperCase()}
+        <div className="flex items-start gap-6">
+          {/* Play Button */}
+          {item.download_status === 'completed' && (
+            <button
+              onClick={() => {
+                const isCurrentTrack = currentTrack?.id === item.id;
+                const isThisPlaying = isCurrentTrack && isPlaying;
+                if (isThisPlaying) {
+                  pausePlayback();
+                } else {
+                  playTrack(item);
+                }
+              }}
+              className="flex-shrink-0 flex items-center justify-center w-16 h-16 transition-colors rounded-full bg-terminal-green hover:bg-terminal-green-dark"
+            >
+              {currentTrack?.id === item.id && isPlaying ? (
+                <Pause className="w-8 h-8 text-dark-900" />
+              ) : (
+                <Play className="w-8 h-8 ml-1 text-dark-900" />
+              )}
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
+            <h1 className="text-4xl font-mono font-bold text-terminal-green break-all">
+              {item.filename}
+            </h1>
+            <div className={`mt-2 font-mono font-bold ${getStatusColor()}`}>
+              {item.download_status.toUpperCase()}
+            </div>
+          </div>
         </div>
       </motion.div>
 

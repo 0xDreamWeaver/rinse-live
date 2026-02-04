@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Item, ProgressUpdate, User, WsEvent, ActiveDownload } from '../types';
+import { api } from '../lib/api';
 
 interface AppStore {
   // Auth state
@@ -17,16 +18,21 @@ interface AppStore {
   setProgressUpdate: (update: ProgressUpdate) => void;
 
   // Active downloads/searches (for real-time UI)
-  // Keyed by trackingId (client-generated unique ID)
+  // Keyed by client_id (client-generated unique ID passed to backend)
   activeDownloads: Map<string, ActiveDownload>;
-  addPendingSearch: (query: string, queueId?: number) => string; // Returns trackingId
+  addPendingSearch: (query: string, clientId: string) => void; // clientId must be pre-generated
+  generateClientId: () => string; // Generate a new client_id
   handleWsEvent: (event: WsEvent) => void;
-  clearActiveDownload: (trackingId: string) => void;
-  dismissActiveDownload: (trackingId: string) => void; // User-initiated dismiss
+  clearActiveDownload: (clientId: string) => void;
+  dismissActiveDownload: (clientId: string) => void; // User-initiated dismiss
 
   // Items that need refresh (triggered by WebSocket)
   itemsNeedRefresh: boolean;
   setItemsNeedRefresh: (value: boolean) => void;
+
+  // Lists that need refresh (triggered by WebSocket)
+  listsNeedRefresh: boolean;
+  setListsNeedRefresh: (value: boolean) => void;
 
   // Selected items for batch operations
   selectedItemIds: number[];
@@ -38,9 +44,24 @@ interface AppStore {
   toggleListSelection: (id: number) => void;
   clearListSelection: () => void;
 
+  // Selected items within a list for batch operations
+  selectedListItemIds: number[];
+  toggleListItemSelection: (id: number) => void;
+  clearListItemSelection: () => void;
+  setSelectedListItemIds: (ids: number[]) => void;
+
   // Search suggestions (cached already downloaded items)
   searchSuggestions: Item[];
   setSearchSuggestions: (items: Item[]) => void;
+
+  // Audio player state
+  currentTrack: Item | null;
+  isPlaying: boolean;
+  playTrack: (track: Item) => void;
+  pausePlayback: () => void;
+  resumePlayback: () => void;
+  stopPlayback: () => void;
+  togglePlayPause: () => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -77,25 +98,29 @@ export const useAppStore = create<AppStore>()(
         }),
 
       // Active downloads (new real-time tracking)
-      // Keyed by trackingId (client-generated unique ID)
+      // Keyed by client_id (client-generated unique ID passed to backend)
       activeDownloads: new Map(),
 
+      // Generate a unique client_id for a new search
+      generateClientId: () => {
+        return `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      },
+
       // Create a pending search entry when user initiates a search
-      addPendingSearch: (query, queueId) => {
-        const trackingId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // clientId must be pre-generated and will be passed to the backend
+      addPendingSearch: (query, clientId) => {
+        console.log('[Popup] addPendingSearch:', { query, clientId });
         set((state) => {
           const downloads = new Map(state.activeDownloads);
-          downloads.set(trackingId, {
-            trackingId,
+          downloads.set(clientId, {
+            trackingId: clientId,
             itemId: 0,
             query,
             stage: 'searching',
-            queueId,
             createdAt: Date.now(),
           });
           return { activeDownloads: downloads };
         });
-        return trackingId;
       },
 
       handleWsEvent: (event) =>
@@ -103,7 +128,30 @@ export const useAppStore = create<AppStore>()(
           const downloads = new Map(state.activeDownloads);
           let needsRefresh = state.itemsNeedRefresh;
 
-          // Helper to find a download by query (searches entries that haven't completed)
+          // Log incoming WebSocket event
+          const eventClientId = 'client_id' in event ? (event as { client_id?: string }).client_id : undefined;
+          const eventItemId = 'item_id' in event ? (event as { item_id?: number }).item_id : undefined;
+          const eventQuery = 'query' in event ? (event as { query?: string }).query : undefined;
+          console.log('[Popup] WS Event received:', {
+            type: event.type,
+            client_id: eventClientId,
+            item_id: eventItemId,
+            query: eventQuery,
+            activeDownloadsKeys: Array.from(downloads.keys()),
+          });
+
+          // Helper to find a download by client_id (the reliable way)
+          const findByClientId = (clientId: string | undefined): [string, ActiveDownload] | undefined => {
+            if (!clientId) return undefined;
+            const download = downloads.get(clientId);
+            if (download) {
+              console.log('[Popup] findByClientId found:', { clientId, download });
+              return [clientId, download];
+            }
+            return undefined;
+          };
+
+          // Helper to find a download by query (fallback for legacy events without client_id)
           const findByQuery = (query: string, stages?: string[]): [string, ActiveDownload] | undefined => {
             for (const [key, download] of downloads.entries()) {
               if (download.query === query) {
@@ -126,46 +174,97 @@ export const useAppStore = create<AppStore>()(
             return undefined;
           };
 
-          // Helper to find entry by itemId first, then by query as fallback
-          // This handles cases where itemId wasn't set yet when entry was created
-          const findEntry = (itemId: number, query?: string, allowedStages?: string[]): [string, ActiveDownload] | undefined => {
-            // First try by itemId
+          // Helper to find entry - tries client_id first, then itemId, then query
+          // client_id is the most reliable, itemId is reliable once set, query is fallback
+          const findEntry = (clientId: string | undefined, itemId: number, query?: string, allowedStages?: string[]): [string, ActiveDownload] | undefined => {
+            // First try by client_id (most reliable)
+            const byClientId = findByClientId(clientId);
+            if (byClientId) {
+              console.log('[Popup] findEntry matched by client_id:', { clientId });
+              return byClientId;
+            }
+            // Then try by itemId
             const byId = findByItemId(itemId);
-            if (byId) return byId;
+            if (byId) {
+              console.log('[Popup] findEntry matched by itemId:', { itemId });
+              return byId;
+            }
             // Fallback to query if provided
             if (query) {
-              return findByQuery(query, allowedStages);
+              const byQuery = findByQuery(query, allowedStages);
+              if (byQuery) {
+                console.log('[Popup] findEntry matched by query:', { query, allowedStages });
+                return byQuery;
+              }
             }
+            console.log('[Popup] findEntry NO MATCH:', { clientId, itemId, query, allowedStages });
             return undefined;
           };
 
           switch (event.type) {
             case 'search_started': {
-              // Try to find existing pending search by query (in searching stage)
-              const found = findByQuery(event.query, ['searching']);
+              // Try to find existing entry by client_id first, then query
+              // Use broader stage filter to find ANY existing entry for this search
+              const found = findEntry(event.client_id, event.item_id || 0, event.query, undefined);
               if (found) {
                 const [key, existing] = found;
+                // Don't overwrite more advanced stages - search_started is an early event
+                // If we already have duplicate/completed/failed, don't regress to searching
+                const advancedStages = ['duplicate', 'completed', 'failed', 'downloading'];
+                if (advancedStages.includes(existing.stage)) {
+                  console.log('[Popup] search_started: SKIPPING - entry already in advanced stage', { key, currentStage: existing.stage });
+                  break;
+                }
+                console.log('[Popup] search_started: updating existing entry', { key, client_id: event.client_id });
                 downloads.set(key, {
                   ...existing,
                   itemId: event.item_id || existing.itemId,
                   stage: 'searching',
                 });
-              } else {
-                // No pending search found - create a new one
-                const trackingId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                downloads.set(trackingId, {
-                  trackingId,
+              } else if (event.client_id) {
+                // Create new entry keyed by client_id
+                console.log('[Popup] search_started: creating new entry with client_id', { client_id: event.client_id });
+                downloads.set(event.client_id, {
+                  trackingId: event.client_id,
                   itemId: event.item_id || 0,
                   query: event.query,
                   stage: 'searching',
                   createdAt: Date.now(),
                 });
+              } else {
+                // No client_id - try to find by query with no stage restriction
+                const byQuery = findByQuery(event.query, undefined);
+                if (byQuery) {
+                  // Found existing entry by query - don't create duplicate
+                  const [key, existing] = byQuery;
+                  if (!['duplicate', 'completed', 'failed', 'downloading'].includes(existing.stage)) {
+                    console.log('[Popup] search_started: updating existing entry by query', { key });
+                    downloads.set(key, {
+                      ...existing,
+                      itemId: event.item_id || existing.itemId,
+                      stage: 'searching',
+                    });
+                  } else {
+                    console.log('[Popup] search_started: SKIPPING - found entry by query in advanced stage', { key, currentStage: existing.stage });
+                  }
+                } else {
+                  // No client_id and no existing entry - create new with generated id
+                  const trackingId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                  console.log('[Popup] search_started: creating new entry with generated id (no client_id!)', { trackingId });
+                  downloads.set(trackingId, {
+                    trackingId,
+                    itemId: event.item_id || 0,
+                    query: event.query,
+                    stage: 'searching',
+                    createdAt: Date.now(),
+                  });
+                }
               }
               break;
             }
             case 'search_progress': {
-              // Try itemId first, then query (for entries where itemId wasn't set)
-              const found = findEntry(event.item_id || 0, (event as any).query, ['searching']);
+              // Try client_id first, then itemId, then query
+              const found = findEntry(event.client_id, event.item_id || 0, undefined, ['searching']);
               if (found) {
                 const [key, existing] = found;
                 downloads.set(key, {
@@ -178,10 +277,11 @@ export const useAppStore = create<AppStore>()(
               break;
             }
             case 'search_completed': {
-              // Try itemId first, then query
-              const found = findEntry(event.item_id || 0, undefined, ['searching', 'selecting']);
+              // Try client_id first, then itemId
+              const found = findEntry(event.client_id, event.item_id || 0, undefined, ['searching', 'selecting']);
               if (found) {
                 const [key, existing] = found;
+                console.log('[Popup] search_completed: updating entry to selecting', { key, client_id: event.client_id, item_id: event.item_id });
                 downloads.set(key, {
                   ...existing,
                   itemId: event.item_id || existing.itemId,
@@ -190,20 +290,21 @@ export const useAppStore = create<AppStore>()(
                   selectedFile: event.selected_file || undefined,
                   selectedUser: event.selected_user || undefined,
                 });
+              } else {
+                console.log('[Popup] search_completed: NO ENTRY FOUND!', { client_id: event.client_id, item_id: event.item_id });
               }
               break;
             }
             case 'download_started': {
-              // Try itemId first, then look for any entry in searching/selecting stage
-              let found = findByItemId(event.item_id);
-              if (!found) {
-                // Look for an entry that's still in searching/selecting stage
-                // This handles cases where itemId wasn't propagated from search events
+              // Try client_id first, then itemId, then look for any searching/selecting entry
+              let found = findEntry(event.client_id, event.item_id, undefined, ['searching', 'selecting']);
+              if (!found && !event.client_id) {
+                // Look for an entry that's still in searching/selecting stage (legacy fallback)
                 for (const [key, download] of downloads.entries()) {
                   if (['searching', 'selecting'].includes(download.stage)) {
-                    // Check if this could be the right entry (itemId matches or itemId is 0)
                     if (download.itemId === 0 || download.itemId === event.item_id) {
                       found = [key, download];
+                      console.log('[Popup] download_started: found via legacy fallback', { key });
                       break;
                     }
                   }
@@ -211,6 +312,7 @@ export const useAppStore = create<AppStore>()(
               }
               if (found) {
                 const [key, existing] = found;
+                console.log('[Popup] download_started: updating entry to downloading', { key, client_id: event.client_id, item_id: event.item_id });
                 downloads.set(key, {
                   ...existing,
                   itemId: event.item_id,
@@ -220,8 +322,22 @@ export const useAppStore = create<AppStore>()(
                   bytesDownloaded: 0,
                   progressPct: 0,
                 });
+              } else if (event.client_id) {
+                console.log('[Popup] download_started: creating NEW entry (no existing match!) with client_id', { client_id: event.client_id });
+                // Create new entry keyed by client_id
+                downloads.set(event.client_id, {
+                  trackingId: event.client_id,
+                  itemId: event.item_id,
+                  query: '',
+                  stage: 'downloading',
+                  filename: event.filename,
+                  totalBytes: event.total_bytes,
+                  bytesDownloaded: 0,
+                  progressPct: 0,
+                  createdAt: Date.now(),
+                });
               } else {
-                // Download started without prior search tracking - create entry
+                // Download started without prior search tracking - create entry with generated id
                 const trackingId = `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 downloads.set(trackingId, {
                   trackingId,
@@ -239,7 +355,8 @@ export const useAppStore = create<AppStore>()(
               break;
             }
             case 'download_progress': {
-              const found = findByItemId(event.item_id);
+              // Try client_id first, then itemId
+              const found = findEntry(event.client_id, event.item_id, undefined, undefined);
               if (found) {
                 const [key, existing] = found;
                 downloads.set(key, {
@@ -253,9 +370,11 @@ export const useAppStore = create<AppStore>()(
               break;
             }
             case 'download_completed': {
-              const found = findByItemId(event.item_id);
+              // Try client_id first, then itemId
+              const found = findEntry(event.client_id, event.item_id, undefined, undefined);
               if (found) {
                 const [key, existing] = found;
+                console.log('[Popup] download_completed: updating entry to completed', { key, client_id: event.client_id, item_id: event.item_id });
                 downloads.set(key, {
                   ...existing,
                   stage: 'completed',
@@ -263,14 +382,16 @@ export const useAppStore = create<AppStore>()(
                   totalBytes: event.total_bytes,
                   progressPct: 100,
                 });
+              } else {
+                console.log('[Popup] download_completed: NO ENTRY FOUND to update!', { client_id: event.client_id, item_id: event.item_id });
               }
               needsRefresh = true;
               break;
             }
             case 'download_failed': {
-              // Try itemId first, then look for any searching/selecting/downloading entry
-              let found = findByItemId(event.item_id);
-              if (!found) {
+              // Try client_id first, then itemId, then search for active entries
+              let found = findEntry(event.client_id, event.item_id, undefined, ['searching', 'selecting', 'downloading']);
+              if (!found && !event.client_id) {
                 for (const [key, download] of downloads.entries()) {
                   if (['searching', 'selecting', 'downloading'].includes(download.stage)) {
                     if (download.itemId === 0 || download.itemId === event.item_id) {
@@ -293,8 +414,9 @@ export const useAppStore = create<AppStore>()(
               break;
             }
             case 'download_queued': {
-              let found = findByItemId(event.item_id);
-              if (!found) {
+              // Try client_id first, then itemId
+              let found = findEntry(event.client_id, event.item_id, undefined, ['searching', 'selecting', 'downloading']);
+              if (!found && !event.client_id) {
                 for (const [key, download] of downloads.entries()) {
                   if (['searching', 'selecting', 'downloading'].includes(download.stage)) {
                     if (download.itemId === 0 || download.itemId === event.item_id) {
@@ -317,19 +439,32 @@ export const useAppStore = create<AppStore>()(
               break;
             }
             case 'duplicate_found': {
-              // Find by query (any stage since it could still be searching)
-              const found = findByQuery(event.query);
+              // Try client_id first, then query
+              const found = findEntry(event.client_id, event.item_id, event.query, undefined);
               if (found) {
                 const [key, existing] = found;
+                console.log('[Popup] duplicate_found: updating existing entry', { key, client_id: event.client_id, previousStage: existing.stage });
                 downloads.set(key, {
                   ...existing,
                   itemId: event.item_id,
                   stage: 'duplicate',
                   filename: event.filename,
                 });
+              } else if (event.client_id) {
+                // Create new entry keyed by client_id
+                console.log('[Popup] duplicate_found: creating NEW entry (no existing match!) with client_id', { client_id: event.client_id });
+                downloads.set(event.client_id, {
+                  trackingId: event.client_id,
+                  itemId: event.item_id,
+                  query: event.query,
+                  stage: 'duplicate',
+                  filename: event.filename,
+                  createdAt: Date.now(),
+                });
               } else {
-                // Create new entry for duplicate
+                // Create new entry for duplicate with generated id
                 const trackingId = `dup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                console.log('[Popup] duplicate_found: creating NEW entry (no client_id!) with generated id', { trackingId });
                 downloads.set(trackingId, {
                   trackingId,
                   itemId: event.item_id,
@@ -353,6 +488,14 @@ export const useAppStore = create<AppStore>()(
               needsRefresh = true;
               return { activeDownloads: downloads, progressUpdates: newUpdates, itemsNeedRefresh: needsRefresh };
             }
+            case 'list_created': {
+              // A new list was created - refresh lists
+              return { activeDownloads: downloads, itemsNeedRefresh: needsRefresh, listsNeedRefresh: true };
+            }
+            case 'list_progress': {
+              // List progress updated - refresh lists
+              return { activeDownloads: downloads, itemsNeedRefresh: needsRefresh, listsNeedRefresh: true };
+            }
           }
 
           return { activeDownloads: downloads, itemsNeedRefresh: needsRefresh };
@@ -374,6 +517,10 @@ export const useAppStore = create<AppStore>()(
       itemsNeedRefresh: false,
       setItemsNeedRefresh: (value) => set({ itemsNeedRefresh: value }),
 
+      // Lists refresh flag
+      listsNeedRefresh: false,
+      setListsNeedRefresh: (value) => set({ listsNeedRefresh: value }),
+
       // Item selection
       selectedItemIds: [],
       toggleItemSelection: (id) =>
@@ -394,9 +541,29 @@ export const useAppStore = create<AppStore>()(
         })),
       clearListSelection: () => set({ selectedListIds: [] }),
 
+      // List item selection (items within a specific list)
+      selectedListItemIds: [],
+      toggleListItemSelection: (id) =>
+        set((state) => ({
+          selectedListItemIds: state.selectedListItemIds.includes(id)
+            ? state.selectedListItemIds.filter((itemId) => itemId !== id)
+            : [...state.selectedListItemIds, id],
+        })),
+      clearListItemSelection: () => set({ selectedListItemIds: [] }),
+      setSelectedListItemIds: (ids) => set({ selectedListItemIds: ids }),
+
       // Search suggestions
       searchSuggestions: [],
       setSearchSuggestions: (items) => set({ searchSuggestions: items }),
+
+      // Audio player state
+      currentTrack: null,
+      isPlaying: false,
+      playTrack: (track) => set({ currentTrack: track, isPlaying: true }),
+      pausePlayback: () => set({ isPlaying: false }),
+      resumePlayback: () => set({ isPlaying: true }),
+      stopPlayback: () => set({ currentTrack: null, isPlaying: false }),
+      togglePlayPause: () => set((state) => ({ isPlaying: !state.isPlaying })),
     }),
     {
       name: 'rinse-auth',
@@ -414,4 +581,27 @@ export const useAuth = () => {
   const { token, user, isAuthenticated, isLoading, setAuth, clearAuth, setLoading } =
     useAppStore();
   return { token, user, isAuthenticated, isLoading, setAuth, clearAuth, setLoading };
+};
+
+// Convenience hook for audio player state
+export const useAudioPlayer = () => {
+  const {
+    currentTrack,
+    isPlaying,
+    playTrack,
+    pausePlayback,
+    resumePlayback,
+    stopPlayback,
+    togglePlayPause,
+  } = useAppStore();
+  return {
+    currentTrack,
+    isPlaying,
+    playTrack,
+    pausePlayback,
+    resumePlayback,
+    stopPlayback,
+    togglePlayPause,
+    getStreamUrl: (itemId: number) => api.getItemStreamUrl(itemId),
+  };
 };

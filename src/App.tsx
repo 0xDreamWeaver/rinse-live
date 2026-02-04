@@ -14,6 +14,7 @@ import { ListDetail } from './pages/ListDetail';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { VerifyEmail } from './pages/VerifyEmail';
+import { About } from './pages/About';
 import { useAuth } from './store';
 import { api } from './lib/api';
 
@@ -90,6 +91,7 @@ function App() {
               <Route path="lists" element={<Lists />} />
               <Route path="lists/:id" element={<ListDetail />} />
               <Route path="profile" element={<Profile />} />
+              <Route path="about" element={<About />} />
             </Route>
           </Routes>
         </AuthInitializer>

@@ -183,7 +183,7 @@ export function Search() {
   const [listQueries, setListQueries] = useState<string[]>(['']);
   const [listName, setListName] = useState('');
 
-  const { activeDownloads, dismissActiveDownload, addPendingSearch } = useAppStore();
+  const { activeDownloads, dismissActiveDownload, addPendingSearch, generateClientId } = useAppStore();
 
   // Get all active downloads sorted by creation time (newest first)
   const allDownloads = Array.from(activeDownloads.values())
@@ -196,10 +196,12 @@ export function Search() {
 
   const queueSearchMutation = useMutation({
     mutationFn: async ({ query, format }: { query: string; format: AudioFormat }) => {
+      // Generate a unique client_id that will be used to match WebSocket events
+      const clientId = generateClientId();
       // Add pending search to store immediately for UI feedback
-      addPendingSearch(query);
-      // Then queue the actual search
-      return api.queueSearch(query, format === 'any' ? undefined : format);
+      addPendingSearch(query, clientId);
+      // Then queue the actual search with the same client_id
+      return api.queueSearch(query, format === 'any' ? undefined : format, clientId);
     },
     onSuccess: () => {
       setQuery('');
@@ -208,8 +210,12 @@ export function Search() {
 
   const queueListMutation = useMutation({
     mutationFn: async (data: { queries: string[]; name?: string; format?: string }) => {
-      // Add pending searches to store for each query
-      data.queries.forEach(q => addPendingSearch(q));
+      // Add pending searches to store for each query with unique client_ids
+      // Note: List API doesn't support per-item client_ids yet, so these are for local UI tracking only
+      data.queries.forEach(q => {
+        const clientId = generateClientId();
+        addPendingSearch(q, clientId);
+      });
       // Then queue the actual list
       return api.queueList(data.queries, data.name, data.format);
     },
@@ -257,7 +263,8 @@ export function Search() {
     items?.filter(
       (item) =>
         item.download_status === 'completed' &&
-        item.filename.toLowerCase().includes(query.toLowerCase())
+        query.length >= 3 &&
+        item.filename.toLowerCase().includes(query.toLowerCase()) 
     ) || [];
 
   return (
@@ -382,7 +389,7 @@ export function Search() {
                   <span>Already Downloaded</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {suggestions.slice(0, 5).map((item) => (
+                  {suggestions.slice(0, 6).map((item) => (
                     <Link
                       key={item.id}
                       to={`/items/${item.id}`}

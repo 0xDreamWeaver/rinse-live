@@ -130,12 +130,13 @@ class ApiClient {
     return this.request(`/api/items/${id}`);
   }
 
-  async searchItem(query: string, format?: string): Promise<Item> {
-    return this.request('/api/items/search', {
-      method: 'POST',
-      body: JSON.stringify({ query, format }),
-    });
-  }
+  // LEGACY: Commented out - use queueSearch() instead
+  // async searchItem(query: string, format?: string): Promise<Item> {
+  //   return this.request('/api/items/search', {
+  //     method: 'POST',
+  //     body: JSON.stringify({ query, format }),
+  //   });
+  // }
 
   async deleteItem(id: number): Promise<void> {
     return this.request(`/api/items/${id}`, {
@@ -156,6 +157,13 @@ class ApiClient {
     return token ? `${url}?token=${token}` : url;
   }
 
+  getItemStreamUrl(id: number): string {
+    // Same as download URL - the backend now serves with inline disposition for playback
+    const token = useAppStore.getState().token;
+    const url = `${this.baseUrl}/api/items/${id}/download`;
+    return token ? `${url}?token=${token}` : url;
+  }
+
   // Lists
   async getLists(): Promise<List[]> {
     return this.request('/api/lists');
@@ -165,12 +173,13 @@ class ApiClient {
     return this.request(`/api/lists/${id}`);
   }
 
-  async searchList(queries: string[], name?: string, format?: string): Promise<List> {
-    return this.request('/api/lists/search', {
-      method: 'POST',
-      body: JSON.stringify({ queries, name, format }),
-    });
-  }
+  // LEGACY: Commented out - use queueList() instead
+  // async searchList(queries: string[], name?: string, format?: string): Promise<List> {
+  //   return this.request('/api/lists/search', {
+  //     method: 'POST',
+  //     body: JSON.stringify({ queries, name, format }),
+  //   });
+  // }
 
   async deleteList(id: number): Promise<void> {
     return this.request(`/api/lists/${id}`, {
@@ -185,6 +194,19 @@ class ApiClient {
     });
   }
 
+  async removeItemFromList(listId: number, itemId: number): Promise<void> {
+    return this.request(`/api/lists/${listId}/items/${itemId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async batchRemoveItemsFromList(listId: number, itemIds: number[]): Promise<void> {
+    return this.request(`/api/lists/${listId}/items`, {
+      method: 'DELETE',
+      body: JSON.stringify({ item_ids: itemIds }),
+    });
+  }
+
   getListDownloadUrl(id: number): string {
     const token = useAppStore.getState().token;
     const url = `${this.baseUrl}/api/lists/${id}/download`;
@@ -192,10 +214,12 @@ class ApiClient {
   }
 
   // Queue API (new non-blocking search system)
-  async queueSearch(query: string, format?: string): Promise<EnqueueSearchResponse> {
+  async queueSearch(query: string, format?: string, clientId?: string): Promise<EnqueueSearchResponse> {
+    // Generate client_id if not provided
+    const client_id = clientId || `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     return this.request('/api/queue/search', {
       method: 'POST',
-      body: JSON.stringify({ query, format }),
+      body: JSON.stringify({ query, format, client_id }),
     });
   }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Download, Trash2, Search, CheckSquare, Square, Calendar, FileText } from 'lucide-react';
@@ -10,13 +10,21 @@ export function Lists() {
   const [searchQuery, setSearchQuery] = useState('');
   const queryClient = useQueryClient();
 
-  const { selectedListIds, toggleListSelection, clearListSelection } =
+  const { selectedListIds, toggleListSelection, clearListSelection, listsNeedRefresh, setListsNeedRefresh } =
     useAppStore();
 
   const { data: lists = [], isLoading } = useQuery({
     queryKey: ['lists'],
     queryFn: () => api.getLists(),
   });
+
+  // Auto-refresh when WebSocket indicates lists changed
+  useEffect(() => {
+    if (listsNeedRefresh) {
+      queryClient.invalidateQueries({ queryKey: ['lists'] });
+      setListsNeedRefresh(false);
+    }
+  }, [listsNeedRefresh, queryClient, setListsNeedRefresh]);
 
   const deleteMutation = useMutation({
     mutationFn: (ids: number[]) => api.batchDeleteLists(ids),
@@ -147,7 +155,7 @@ export function Lists() {
                 {/* Selection Checkbox */}
                 <button
                   onClick={() => toggleListSelection(list.id)}
-                  className="absolute top-4 right-4 transition-colors text-terminal-green hover:text-terminal-green-dark"
+                  className="absolute top-6 right-6 transition-colors text-terminal-green hover:text-terminal-green-dark"
                 >
                   {isSelected ? (
                     <CheckSquare className="w-5 h-5" />

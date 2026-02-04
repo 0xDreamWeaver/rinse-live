@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { LogIn, ArrowRight, Mail } from 'lucide-react';
+import { LogIn, Mail } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../store';
+import RinseLogo from '../assets/RinseLogo';
 
 export function Login() {
   const navigate = useNavigate();
@@ -29,32 +30,26 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-dark-900 scan-effect flex items-center justify-center p-8">
+    <div className="flex justify-center items-center p-8 min-h-screen bg-dark-900 scan-effect">
       {/* Ambient grid background */}
-      <div className="fixed inset-0 pointer-events-none opacity-5">
-        <div className="grid-pattern w-full h-full" />
+      <div className="fixed inset-0 opacity-5 pointer-events-none">
+        <div className="w-full h-full grid-pattern" />
       </div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md relative z-10"
+        className="relative z-10 w-full max-w-md"
       >
         {/* Logo */}
-        <div className="text-center mb-12">
+        <div className="mb-12 text-center">
           <motion.div
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.1 }}
             className="inline-block"
           >
-            <div className="w-20 h-20 border-2 border-terminal-green mx-auto terminal-box-glow mb-4">
-              <div className="w-full h-full flex items-center justify-center">
-                <span className="font-display text-terminal-green font-bold text-4xl terminal-glow">
-                  R
-                </span>
-              </div>
-            </div>
+            <RinseLogo size="xl" />
           </motion.div>
           <motion.h1
             initial={{ opacity: 0 }}
@@ -68,7 +63,7 @@ export function Login() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="text-gray-500 text-sm mt-2"
+            className="mt-2 text-sm text-gray-500"
           >
             Sign in to continue
           </motion.p>
@@ -80,10 +75,10 @@ export function Login() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           onSubmit={handleSubmit}
-          className="card-terminal space-y-6"
+          className="space-y-6 card-terminal"
         >
           <div>
-            <label className="block text-sm font-mono text-terminal-green mb-2">
+            <label className="block mb-2 font-mono text-sm text-terminal-green">
               Email or Username
             </label>
             <div className="relative">
@@ -92,16 +87,16 @@ export function Login() {
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="email@example.com or username"
-                className="input-terminal w-full pl-10"
+                className="pl-10 w-full input-terminal"
                 required
                 disabled={loginMutation.isPending}
               />
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-terminal-green/50" />
+              <Mail className="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-terminal-green/50" />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-mono text-terminal-green mb-2">
+            <label className="block mb-2 font-mono text-sm text-terminal-green">
               Password
             </label>
             <input
@@ -109,7 +104,7 @@ export function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="input-terminal w-full"
+              className="w-full input-terminal"
               required
               disabled={loginMutation.isPending}
             />
@@ -119,7 +114,7 @@ export function Login() {
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="p-4 border border-red-500 bg-red-500/10 text-red-500 font-mono text-sm"
+              className="p-4 font-mono text-sm text-red-500 border border-red-500 bg-red-500/10"
             >
               {(loginMutation.error as Error).message}
             </motion.div>
@@ -128,17 +123,22 @@ export function Login() {
           <button
             type="submit"
             disabled={loginMutation.isPending}
-            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex gap-2 justify-center items-center w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <LogIn className="w-5 h-5" />
-            {loginMutation.isPending ? 'SIGNING IN...' : 'SIGN IN'}
-            <ArrowRight className="w-5 h-5" />
+            {loginMutation.isPending
+              ? 'SIGNING IN...'
+              : <>
+                SIGN IN
+                <LogIn className="w-5 h-5" />
+              </>
+            }
+            {/* <ArrowRight className="w-5 h-5" /> */}
           </button>
 
           <div className="text-center">
             <Link
               to="/register"
-              className="text-terminal-green hover:text-terminal-green-dark transition-colors text-sm"
+              className="text-sm transition-colors text-terminal-green hover:text-terminal-green-dark"
             >
               Don't have an account? Register
             </Link>

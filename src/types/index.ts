@@ -8,7 +8,7 @@ export interface Item {
   duration: number | null;
   extension: string;
   source_username: string;
-  download_status: 'pending' | 'downloading' | 'completed' | 'failed';
+  download_status: 'pending' | 'downloading' | 'completed' | 'failed' | 'queued' | 'deleted';
   download_progress: number;
   error_message: string | null;
   metadata: string | null;
@@ -28,8 +28,8 @@ export interface List {
   completed_at: string | null;
 }
 
-export interface ListWithItems {
-  list: List;
+// Note: Backend uses #[serde(flatten)] so list fields are at root level
+export interface ListWithItems extends List {
   items: Item[];
 }
 
@@ -59,12 +59,18 @@ export type WsEventType =
   | 'download_failed'
   | 'download_queued'
   | 'item_updated'
-  | 'duplicate_found';
+  | 'duplicate_found'
+  | 'list_created'
+  | 'list_progress'
+  | 'search_queued'
+  | 'search_processing'
+  | 'search_failed';
 
 export interface WsSearchStarted {
   type: 'search_started';
   item_id: number;
   query: string;
+  client_id?: string;
 }
 
 export interface WsSearchProgress {
@@ -72,6 +78,7 @@ export interface WsSearchProgress {
   item_id: number;
   results_count: number;
   users_count: number;
+  client_id?: string;
 }
 
 export interface WsSearchCompleted {
@@ -80,6 +87,7 @@ export interface WsSearchCompleted {
   results_count: number;
   selected_file: string | null;
   selected_user: string | null;
+  client_id?: string;
 }
 
 export interface WsDownloadStarted {
@@ -87,6 +95,7 @@ export interface WsDownloadStarted {
   item_id: number;
   filename: string;
   total_bytes: number;
+  client_id?: string;
 }
 
 export interface WsDownloadProgress {
@@ -96,6 +105,7 @@ export interface WsDownloadProgress {
   total_bytes: number;
   progress_pct: number;
   speed_kbps: number;
+  client_id?: string;
 }
 
 export interface WsDownloadCompleted {
@@ -103,12 +113,14 @@ export interface WsDownloadCompleted {
   item_id: number;
   filename: string;
   total_bytes: number;
+  client_id?: string;
 }
 
 export interface WsDownloadFailed {
   type: 'download_failed';
   item_id: number;
   error: string;
+  client_id?: string;
 }
 
 export interface WsDownloadQueued {
@@ -116,6 +128,7 @@ export interface WsDownloadQueued {
   item_id: number;
   position: number | null;
   reason: string;
+  client_id?: string;
 }
 
 export interface WsItemUpdated {
@@ -131,6 +144,47 @@ export interface WsDuplicateFound {
   item_id: number;
   filename: string;
   query: string;
+  client_id?: string;
+}
+
+export interface WsListCreated {
+  type: 'list_created';
+  list_id: number;
+  name: string;
+  total_items: number;
+}
+
+export interface WsListProgress {
+  type: 'list_progress';
+  list_id: number;
+  completed: number;
+  failed: number;
+  total: number;
+  status: string;
+}
+
+// Queue-related WebSocket events
+export interface WsSearchQueued {
+  type: 'search_queued';
+  queue_id: number;
+  query: string;
+  position: number;
+  client_id?: string;
+}
+
+export interface WsSearchProcessing {
+  type: 'search_processing';
+  queue_id: number;
+  query: string;
+  client_id?: string;
+}
+
+export interface WsSearchFailed {
+  type: 'search_failed';
+  queue_id: number;
+  query: string;
+  error: string;
+  client_id?: string;
 }
 
 export type WsEvent =
@@ -143,7 +197,12 @@ export type WsEvent =
   | WsDownloadFailed
   | WsDownloadQueued
   | WsItemUpdated
-  | WsDuplicateFound;
+  | WsDuplicateFound
+  | WsListCreated
+  | WsListProgress
+  | WsSearchQueued
+  | WsSearchProcessing
+  | WsSearchFailed;
 
 // Current download/search state for UI
 export interface ActiveDownload {
@@ -170,6 +229,7 @@ export interface EnqueueSearchResponse {
   queue_id: number;
   query: string;
   position: number;
+  client_id?: string;
 }
 
 export interface EnqueueListResponse {

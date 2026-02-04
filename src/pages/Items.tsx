@@ -9,9 +9,9 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table';
 import { motion } from 'framer-motion';
-import { Download, Trash2, Search, CheckSquare, Square, Loader2 } from 'lucide-react';
+import { Download, Trash2, Search, CheckSquare, Square, Loader2, Play, Pause, RotateCcw } from 'lucide-react';
 import { api } from '../lib/api';
-import { useAppStore } from '../store';
+import { useAppStore, useAudioPlayer } from '../store';
 import { Link } from 'react-router-dom';
 import type { Item } from '../types';
 
@@ -23,6 +23,7 @@ export function Items() {
 
   const { selectedItemIds, toggleItemSelection, clearItemSelection, itemsNeedRefresh, setItemsNeedRefresh, activeDownloads, progressUpdates } =
     useAppStore();
+  const { currentTrack, isPlaying, playTrack, pausePlayback } = useAudioPlayer();
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['items'],
@@ -39,9 +40,11 @@ export function Items() {
 
   // Get progress for a specific item from WebSocket updates
   const getItemProgress = (itemId: number) => {
-    const download = activeDownloads.get(itemId);
-    if (download?.stage === 'downloading') {
-      return download.progressPct || 0;
+    // activeDownloads is keyed by clientId (string), so we need to find by itemId
+    for (const download of activeDownloads.values()) {
+      if (download.itemId === itemId && download.stage === 'downloading') {
+        return download.progressPct || 0;
+      }
     }
     const progress = progressUpdates.get(itemId);
     if (progress && progress.status === 'downloading') {
@@ -55,6 +58,18 @@ export function Items() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] });
       clearItemSelection();
+    },
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: async ({ id, query }: { id: number; query: string }) => {
+      // Queue a new search with the same query
+      await api.queueSearch(query);
+      // Delete the failed item
+      await api.deleteItem(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
     },
   });
 
@@ -100,14 +115,44 @@ export function Items() {
       }),
       columnHelper.accessor('filename', {
         header: 'Filename',
-        cell: (info) => (
-          <Link
-            to={`/items/${info.row.original.id}`}
-            className="font-mono transition-colors text-terminal-green hover:text-terminal-green-dark hover:underline"
-          >
-            {info.getValue()}
-          </Link>
-        ),
+        cell: (info) => {
+          const item = info.row.original;
+          const isCurrentTrack = currentTrack?.id === item.id;
+          const isThisPlaying = isCurrentTrack && isPlaying;
+          const isCompleted = item.download_status === 'completed';
+
+          return (
+            <div className="flex items-center gap-3">
+              {isCompleted ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isThisPlaying) {
+                      pausePlayback();
+                    } else {
+                      playTrack(item);
+                    }
+                  }}
+                  className="flex-shrink-0 flex items-center justify-center w-8 h-8 transition-colors rounded-full bg-terminal-green hover:bg-terminal-green-dark"
+                >
+                  {isThisPlaying ? (
+                    <Pause className="w-4 h-4 text-dark-900" />
+                  ) : (
+                    <Play className="w-4 h-4 ml-0.5 text-dark-900" />
+                  )}
+                </button>
+              ) : (
+                <div className="w-8 h-8 flex-shrink-0" />
+              )}
+              <Link
+                to={`/items/${item.id}`}
+                className="font-mono transition-colors text-terminal-green hover:text-terminal-green-dark hover:underline"
+              >
+                {info.getValue()}
+              </Link>
+            </div>
+          );
+        },
       }),
       columnHelper.accessor('file_size', {
         header: 'Size',
@@ -163,15 +208,31 @@ export function Items() {
                 href={api.getItemDownloadUrl(row.original.id)}
                 download
                 className="px-3 py-1 text-sm btn-secondary"
+                title="Download file"
               >
                 <Download className="w-4 h-4" />
               </a>
+            )}
+            {row.original.download_status === 'failed' && (
+              <button
+                onClick={() => {
+                  retryMutation.mutate({
+                    id: row.original.id,
+                    query: row.original.original_query,
+                  });
+                }}
+                disabled={retryMutation.isPending}
+                className="px-3 py-1 text-sm btn-secondary"
+                title="Retry download"
+              >
+                <RotateCcw className={`w-4 h-4 ${retryMutation.isPending ? 'animate-spin' : ''}`} />
+              </button>
             )}
           </div>
         ),
       }),
     ],
-    [items, selectedItemIds, toggleItemSelection, clearItemSelection]
+    [items, selectedItemIds, toggleItemSelection, clearItemSelection, currentTrack, isPlaying, playTrack, pausePlayback, retryMutation]
   );
 
   const table = useReactTable({
