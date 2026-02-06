@@ -7,6 +7,7 @@ interface ServiceAttribution {
   description: string;
   icon: typeof Music;
   license?: string;
+  dofollow?: boolean;
 }
 
 const services: ServiceAttribution[] = [
@@ -15,6 +16,8 @@ const services: ServiceAttribution[] = [
     url: 'https://www.slsknet.org/',
     description: 'Peer-to-peer file sharing network for music discovery and sharing',
     icon: Music,
+    // Standard external link - use noopener for security
+    dofollow: false,
   },
   {
     name: 'MusicBrainz',
@@ -22,12 +25,14 @@ const services: ServiceAttribution[] = [
     description: 'Open music encyclopedia for track metadata including artist, album, title, and more',
     icon: Database,
     license: 'CC0 / CC BY-NC-SA 3.0',
+    dofollow: false,
   },
   {
     name: 'Cover Art Archive',
     url: 'https://coverartarchive.org/',
     description: 'Free and open repository of album artwork, linked with MusicBrainz releases',
     icon: Disc,
+    dofollow: false,
   },
   {
     name: 'GetSongBPM',
@@ -35,6 +40,8 @@ const services: ServiceAttribution[] = [
     description: 'BPM and musical key database for DJs and music producers',
     icon: Disc,
     license: 'CC BY 4.0',
+    // GetSongBPM requires a dofollow link for attribution
+    dofollow: true,
   },
 ];
 
@@ -111,7 +118,7 @@ export function About() {
               key={service.name}
               href={service.url}
               target="_blank"
-              rel="noopener noreferrer"
+              rel={service.dofollow ? 'noopener' : 'noopener noreferrer'}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3 + index * 0.1 }}
@@ -185,7 +192,7 @@ export function About() {
           <a
             href="https://getsongbpm.com"
             target="_blank"
-            rel="noopener noreferrer"
+            rel="noopener"
             className="text-terminal-green hover:underline"
           >
             GetSongBPM
