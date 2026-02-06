@@ -13,7 +13,7 @@ const navItems = [
 
 export function Sidebar() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading: isAuthLoading, clearAuth } = useAuth();
+  const { isAuthenticated, clearAuth } = useAuth();
 
   const handleLogout = () => {
     clearAuth();
