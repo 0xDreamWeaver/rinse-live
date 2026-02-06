@@ -21,7 +21,7 @@ export function Layout() {
         transition={{ duration: 0.5 }}
         className={`ml-20 p-8 ${currentTrack ? 'pb-24' : ''}`}
       >
-        <div className="max-w-7xl mx-auto">
+        <div className="mx-auto max-w-7xl">
           <Outlet />
         </div>
       </motion.main>
@@ -30,8 +30,8 @@ export function Layout() {
       <AudioPlayer />
 
       {/* Ambient grid background */}
-      <div className="fixed inset-0 pointer-events-none opacity-5">
-        <div className="grid-pattern w-full h-full" />
+      <div className="fixed inset-0 opacity-5 pointer-events-none">
+        <div className="w-full h-full grid-pattern" />
       </div>
     </div>
   );

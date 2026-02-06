@@ -144,6 +144,19 @@ export function Login() {
             </Link>
           </div>
         </motion.form>
+        {/* Footer link */}
+        <div className="flex flex-col justify-center items-center">
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.9, duration: 0.5 }}
+            className="mt-2 font-mono text-sm text-gray-600"
+          >
+            <Link to="/about">
+              Learn about Rinse
+            </Link>
+          </motion.p>
+        </div>
       </motion.div>
     </div>
   );

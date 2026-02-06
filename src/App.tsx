@@ -91,6 +91,9 @@ function App() {
               <Route path="lists" element={<Lists />} />
               <Route path="lists/:id" element={<ListDetail />} />
               <Route path="profile" element={<Profile />} />
+            </Route>
+            {/* Unprotected routes */}
+            <Route path="/" element={<Layout />}>
               <Route path="about" element={<About />} />
             </Route>
           </Routes>
