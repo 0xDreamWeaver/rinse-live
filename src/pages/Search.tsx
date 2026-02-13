@@ -176,11 +176,20 @@ const FORMAT_OPTIONS: { id: AudioFormat; label: string }[] = [
   { id: 'ogg', label: 'OGG' },
 ];
 
+// Track input for list mode
+interface ListTrackInput {
+  track: string;
+  artist: string;
+}
+
 export function Search() {
   const [mode, setMode] = useState<'item' | 'list'>('item');
-  const [query, setQuery] = useState('');
+  // Single search inputs
+  const [track, setTrack] = useState('');
+  const [artist, setArtist] = useState('');
   const [format, setFormat] = useState<AudioFormat>('any');
-  const [listQueries, setListQueries] = useState<string[]>(['']);
+  // List search inputs
+  const [listTracks, setListTracks] = useState<ListTrackInput[]>([{ track: '', artist: '' }]);
   const [listName, setListName] = useState('');
 
   const { activeDownloads, dismissActiveDownload, addPendingSearch, generateClientId } = useAppStore();
@@ -195,76 +204,90 @@ export function Search() {
   });
 
   const queueSearchMutation = useMutation({
-    mutationFn: async ({ query, format }: { query: string; format: AudioFormat }) => {
+    mutationFn: async ({ track, artist, format }: { track: string; artist: string; format: AudioFormat }) => {
       // Generate a unique client_id that will be used to match WebSocket events
       const clientId = generateClientId();
+      // Build display query for UI feedback
+      const displayQuery = artist.trim() ? `${artist.trim()} - ${track.trim()}` : track.trim();
       // Add pending search to store immediately for UI feedback
-      addPendingSearch(query, clientId);
+      addPendingSearch(displayQuery, clientId);
       // Then queue the actual search with the same client_id
-      return api.queueSearch(query, format === 'any' ? undefined : format, clientId);
+      return api.queueSearch(
+        track.trim(),
+        artist.trim() || undefined,
+        format === 'any' ? undefined : format,
+        clientId
+      );
     },
     onSuccess: () => {
-      setQuery('');
+      setTrack('');
+      setArtist('');
     },
   });
 
   const queueListMutation = useMutation({
-    mutationFn: async (data: { queries: string[]; name?: string; format?: string }) => {
-      // Add pending searches to store for each query with unique client_ids
+    mutationFn: async (data: { tracks: ListTrackInput[]; name?: string; format?: string }) => {
+      // Add pending searches to store for each track with unique client_ids
       // Note: List API doesn't support per-item client_ids yet, so these are for local UI tracking only
-      data.queries.forEach(q => {
+      data.tracks.forEach(t => {
+        const displayQuery = t.artist.trim() ? `${t.artist.trim()} - ${t.track.trim()}` : t.track.trim();
         const clientId = generateClientId();
-        addPendingSearch(q, clientId);
+        addPendingSearch(displayQuery, clientId);
       });
-      // Then queue the actual list
-      return api.queueList(data.queries, data.name, data.format);
+      // Convert to API format and queue the list
+      const apiTracks = data.tracks.map(t => ({
+        track: t.track.trim(),
+        artist: t.artist.trim() || undefined,
+      }));
+      return api.queueList(apiTracks, data.name, data.format);
     },
     onSuccess: () => {
-      setListQueries(['']);
+      setListTracks([{ track: '', artist: '' }]);
       setListName('');
     },
   });
 
   const handleSearchItem = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) {
-      queueSearchMutation.mutate({ query, format });
+    if (track.trim()) {
+      queueSearchMutation.mutate({ track, artist, format });
     }
   };
 
   const handleSearchList = (e: React.FormEvent) => {
     e.preventDefault();
-    const validQueries = listQueries.filter((q) => q.trim());
-    if (validQueries.length > 0) {
+    const validTracks = listTracks.filter((t) => t.track.trim());
+    if (validTracks.length > 0) {
       queueListMutation.mutate({
-        queries: validQueries,
+        tracks: validTracks,
         name: listName || undefined,
         format: format === 'any' ? undefined : format,
       });
     }
   };
 
-  const addListQuery = () => {
-    setListQueries([...listQueries, '']);
+  const addListTrack = () => {
+    setListTracks([...listTracks, { track: '', artist: '' }]);
   };
 
-  const updateListQuery = (index: number, value: string) => {
-    const newQueries = [...listQueries];
-    newQueries[index] = value;
-    setListQueries(newQueries);
+  const updateListTrack = (index: number, field: 'track' | 'artist', value: string) => {
+    const newTracks = [...listTracks];
+    newTracks[index] = { ...newTracks[index], [field]: value };
+    setListTracks(newTracks);
   };
 
-  const removeListQuery = (index: number) => {
-    setListQueries(listQueries.filter((_, i) => i !== index));
+  const removeListTrack = (index: number) => {
+    setListTracks(listTracks.filter((_, i) => i !== index));
   };
 
-  // Filter suggestions based on query
+  // Filter suggestions based on track input
+  const searchTerm = track.trim();
   const suggestions =
     items?.filter(
       (item) =>
         item.download_status === 'completed' &&
-        query.length >= 3 &&
-        item.filename.toLowerCase().includes(query.toLowerCase()) 
+        searchTerm.length >= 3 &&
+        item.filename.toLowerCase().includes(searchTerm.toLowerCase())
     ) || [];
 
   return (
@@ -357,28 +380,51 @@ export function Search() {
       >
         {mode === 'item' ? (
           <form onSubmit={handleSearchItem} className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-            >
-              <label className="block mb-2 font-mono text-sm text-terminal-green">
-                Query
-              </label>
-              <div className="relative">
-                <SearchIcon className="absolute left-4 top-1/2 w-5 h-5 text-gray-500 -translate-y-1/2" />
+            <div className="flex gap-4">
+              {/* Artist input (optional) */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="flex-1"
+              >
+                <label className="block mb-2 font-mono text-sm text-terminal-green">
+                  Artist <span className="text-gray-500">(optional)</span>
+                </label>
                 <input
                   type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Artist - Track Name"
-                  className="pl-12 w-full input-terminal"
+                  value={artist}
+                  onChange={(e) => setArtist(e.target.value)}
+                  placeholder="Artist name"
+                  className="w-full input-terminal"
                 />
-              </div>
-            </motion.div>
+              </motion.div>
+
+              {/* Track input (required) */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="flex-1"
+              >
+                <label className="block mb-2 font-mono text-sm text-terminal-green">
+                  Track <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <SearchIcon className="absolute left-4 top-1/2 w-5 h-5 text-gray-500 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={track}
+                    onChange={(e) => setTrack(e.target.value)}
+                    placeholder="Track name"
+                    className="pl-12 w-full input-terminal"
+                  />
+                </div>
+              </motion.div>
+            </div>
 
             {/* Suggestions */}
-            {query && suggestions.length > 0 && (
+            {searchTerm && suggestions.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -404,7 +450,7 @@ export function Search() {
 
             <button
               type="submit"
-              disabled={!query.trim()}
+              disabled={!track.trim()}
               className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               SEARCH & DOWNLOAD
@@ -448,11 +494,13 @@ export function Search() {
             </div>
 
             <div className="space-y-3">
-              <label className="block font-mono text-sm text-terminal-green">
-                Queries ({listQueries.filter((q) => q.trim()).length})
-              </label>
+              <div className="flex gap-4 font-mono text-sm text-terminal-green">
+                <span className="flex-1">Artist <span className="text-gray-500">(optional)</span></span>
+                <span className="flex-1">Track <span className="text-red-400">*</span></span>
+                <span className="w-10"></span>
+              </div>
 
-              {listQueries.map((query, index) => (
+              {listTracks.map((item, index) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, x: -20 }}
@@ -461,15 +509,22 @@ export function Search() {
                 >
                   <input
                     type="text"
-                    value={query}
-                    onChange={(e) => updateListQuery(index, e.target.value)}
+                    value={item.artist}
+                    onChange={(e) => updateListTrack(index, 'artist', e.target.value)}
+                    placeholder="Artist"
+                    className="flex-1 input-terminal"
+                  />
+                  <input
+                    type="text"
+                    value={item.track}
+                    onChange={(e) => updateListTrack(index, 'track', e.target.value)}
                     placeholder={`Track ${index + 1}`}
                     className="flex-1 input-terminal"
                   />
-                  {listQueries.length > 1 && (
+                  {listTracks.length > 1 && (
                     <button
                       type="button"
-                      onClick={() => removeListQuery(index)}
+                      onClick={() => removeListTrack(index)}
                       className="px-3 btn-secondary"
                     >
                       ✕
@@ -480,20 +535,20 @@ export function Search() {
 
               <button
                 type="button"
-                onClick={addListQuery}
+                onClick={addListTrack}
                 className="flex gap-2 justify-center items-center w-full btn-secondary"
               >
                 <Plus className="w-4 h-4" />
-                Add Query
+                Add Track
               </button>
             </div>
 
             <button
               type="submit"
-              disabled={listQueries.filter((q) => q.trim()).length === 0}
+              disabled={listTracks.filter((t) => t.track.trim()).length === 0}
               className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {`SEARCH & DOWNLOAD ${listQueries.filter((q) => q.trim()).length} ITEMS`}
+              {`SEARCH & DOWNLOAD ${listTracks.filter((t) => t.track.trim()).length} ITEMS`}
             </button>
 
             {queueListMutation.isError && (

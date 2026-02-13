@@ -1,6 +1,8 @@
 import type {
   Item, List, ListWithItems, User,
-  EnqueueSearchResponse, EnqueueListResponse, QueueStatusResponse, QueueItemsResponse
+  EnqueueSearchResponse, EnqueueListResponse, QueueStatusResponse, QueueItemsResponse,
+  TrackMetadata, MetadataRefreshResponse, MetadataJobResponse, MetadataJobStatusResponse,
+  ListTrackRequest
 } from '../types';
 import { useAppStore } from '../store';
 
@@ -187,6 +189,19 @@ class ApiClient {
     });
   }
 
+  async deleteListWithItems(id: number): Promise<void> {
+    return this.request(`/api/lists/${id}/with-items`, {
+      method: 'DELETE',
+    });
+  }
+
+  async renameList(id: number, name: string): Promise<void> {
+    return this.request(`/api/lists/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    });
+  }
+
   async batchDeleteLists(ids: number[]): Promise<void> {
     return this.request('/api/lists', {
       method: 'DELETE',
@@ -214,19 +229,19 @@ class ApiClient {
   }
 
   // Queue API (new non-blocking search system)
-  async queueSearch(query: string, format?: string, clientId?: string): Promise<EnqueueSearchResponse> {
+  async queueSearch(track: string, artist?: string, format?: string, clientId?: string): Promise<EnqueueSearchResponse> {
     // Generate client_id if not provided
     const client_id = clientId || `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     return this.request('/api/queue/search', {
       method: 'POST',
-      body: JSON.stringify({ query, format, client_id }),
+      body: JSON.stringify({ track, artist, format, client_id }),
     });
   }
 
-  async queueList(queries: string[], name?: string, format?: string): Promise<EnqueueListResponse> {
+  async queueList(tracks: ListTrackRequest[], name?: string, format?: string): Promise<EnqueueListResponse> {
     return this.request('/api/queue/list', {
       method: 'POST',
-      body: JSON.stringify({ queries, name, format }),
+      body: JSON.stringify({ tracks, name, format }),
     });
   }
 
@@ -250,6 +265,67 @@ class ApiClient {
     const url = this.baseUrl.replace(/^https?/, wsProtocol);
     const token = useAppStore.getState().token;
     return token ? `${url}/api/ws/progress?token=${token}` : `${url}/api/ws/progress`;
+  }
+
+  // Metadata
+  async getItemMetadata(id: number): Promise<TrackMetadata> {
+    return this.request(`/api/items/${id}/metadata`);
+  }
+
+  async refreshItemMetadata(id: number): Promise<MetadataRefreshResponse> {
+    return this.request(`/api/items/${id}/metadata/refresh`, {
+      method: 'POST',
+    });
+  }
+
+  async clearItemMetadata(id: number): Promise<{ item_id: number; message: string }> {
+    return this.request(`/api/items/${id}/metadata`, {
+      method: 'DELETE',
+    });
+  }
+
+  async batchRefreshMetadata(ids: number[]): Promise<{ results: Array<{ id: number; success: boolean; error?: string }> }> {
+    // The backend doesn't have a batch endpoint, so we call single refresh for each
+    // We run them in parallel but with a small delay to avoid overwhelming the server
+    const results: Array<{ id: number; success: boolean; error?: string }> = [];
+
+    // Process in batches of 5 to avoid too many concurrent requests
+    const batchSize = 5;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (id) => {
+          try {
+            await this.refreshItemMetadata(id);
+            return { id, success: true };
+          } catch (error) {
+            return {
+              id,
+              success: false,
+              error: error instanceof Error ? error.message : 'Unknown error'
+            };
+          }
+        })
+      );
+      results.push(...batchResults);
+
+      // Small delay between batches to be nice to the server
+      if (i + batchSize < ids.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+
+    return { results };
+  }
+
+  async startMetadataJob(): Promise<MetadataJobResponse> {
+    return this.request('/api/metadata/job', {
+      method: 'POST',
+    });
+  }
+
+  async getMetadataJobStatus(): Promise<MetadataJobStatusResponse> {
+    return this.request('/api/metadata/job');
   }
 }
 

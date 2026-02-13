@@ -2,6 +2,8 @@ export interface Item {
   id: number;
   filename: string;
   original_query: string;
+  original_artist: string | null;  // Separate artist from search input
+  original_track: string | null;   // Separate track from search input
   file_path: string;
   file_size: number;
   bitrate: number | null;
@@ -14,6 +16,22 @@ export interface Item {
   metadata: string | null;
   created_at: string;
   completed_at: string | null;
+
+  // Track metadata from external API lookups
+  meta_artist: string | null;
+  meta_album: string | null;
+  meta_title: string | null;
+  meta_bpm: number | null;
+  meta_key: string | null;
+  meta_duration_ms: number | null;
+  meta_genre: string | null;
+  meta_year: number | null;
+  meta_track_number: number | null;
+  meta_label: string | null;
+  meta_album_art_url: string | null;
+  meta_musicbrainz_id: string | null;
+  metadata_fetched_at: string | null;
+  metadata_sources: string | null; // JSON array
 }
 
 export interface List {
@@ -224,10 +242,17 @@ export interface ActiveDownload {
   createdAt: number; // Timestamp for sorting
 }
 
-// Queue API response types
+// Queue API request/response types
+export interface ListTrackRequest {
+  track: string;
+  artist?: string;
+}
+
 export interface EnqueueSearchResponse {
   queue_id: number;
-  query: string;
+  track: string;
+  artist?: string;
+  query: string;  // Combined query used for search
   position: number;
   client_id?: string;
 }
@@ -265,4 +290,38 @@ export interface QueueItemsResponse {
   items: QueuedSearch[];
   pending: number;
   processing: number;
+}
+
+// Track metadata from MusicBrainz, GetSongBPM, etc.
+export interface TrackMetadata {
+  artist: string | null;
+  album: string | null;
+  title: string | null;
+  bpm: number | null;
+  key: string | null;
+  duration_ms: number | null;
+  album_art_url: string | null;
+  genre: string | null;
+  year: number | null;
+  track_number: number | null;
+  label: string | null;
+  musicbrainz_id: string | null;
+  sources: string[];
+  fetched_at: string | null;
+}
+
+export interface MetadataRefreshResponse {
+  item_id: number;
+  metadata: TrackMetadata;
+  message: string;
+}
+
+export interface MetadataJobResponse {
+  message: string;
+  total_items: number;
+}
+
+export interface MetadataJobStatusResponse {
+  running: boolean;
+  items_without_metadata: number;
 }

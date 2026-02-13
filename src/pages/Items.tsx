@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   useReactTable,
@@ -9,13 +9,46 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table';
 import { motion } from 'framer-motion';
-import { Download, Trash2, Search, CheckSquare, Square, Loader2, Play, Pause, RotateCcw } from 'lucide-react';
+import { Download, Trash2, Search, CheckSquare, Square, Loader2, Play, Pause, RotateCcw, RefreshCw, Music } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore, useAudioPlayer } from '../store';
 import { Link } from 'react-router-dom';
 import type { Item } from '../types';
 
 const columnHelper = createColumnHelper<Item>();
+
+// Highlight matching text in search results
+function HighlightMatch({ text, searchTerm }: { text: string; searchTerm: string }): ReactNode {
+  if (!searchTerm || !text) return text;
+
+  const lowerText = text.toLowerCase();
+  const lowerSearch = searchTerm.toLowerCase();
+  const index = lowerText.indexOf(lowerSearch);
+
+  if (index === -1) return text;
+
+  return (
+    <>
+      {text.slice(0, index)}
+      <span className="font-bold text-terminal-green">{text.slice(index, index + searchTerm.length)}</span>
+      {text.slice(index + searchTerm.length)}
+    </>
+  );
+}
+
+// Custom global filter function that searches artist, title, and filename
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const globalFilterFn = (row: any, _columnId: string, filterValue: string) => {
+  const search = (filterValue || '').toLowerCase();
+  if (!search) return true;
+
+  const item = row.original as Item;
+  const title = (item.meta_title || item.filename).toLowerCase();
+  const artist = (item.meta_artist || '').toLowerCase();
+  const filename = item.filename.toLowerCase();
+
+  return title.includes(search) || artist.includes(search) || filename.includes(search);
+};
 
 export function Items() {
   const [globalFilter, setGlobalFilter] = useState('');
@@ -62,14 +95,27 @@ export function Items() {
   });
 
   const retryMutation = useMutation({
-    mutationFn: async ({ id, query }: { id: number; query: string }) => {
-      // Queue a new search with the same query
-      await api.queueSearch(query);
+    mutationFn: async ({ id, track, artist }: { id: number; track: string; artist?: string }) => {
+      // Queue a new search with the same track/artist
+      await api.queueSearch(track, artist);
       // Delete the failed item
       await api.deleteItem(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] });
+    },
+  });
+
+  const refreshMetadataMutation = useMutation({
+    mutationFn: (ids: number[]) => api.batchRefreshMetadata(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      clearItemSelection();
+      const successCount = data.results.filter(r => r.success).length;
+      const failCount = data.results.filter(r => !r.success).length;
+      if (failCount > 0) {
+        alert(`Metadata refreshed for ${successCount} items. ${failCount} items failed (may be rate limited).`);
+      }
     },
   });
 
@@ -113,44 +159,99 @@ export function Items() {
           </button>
         ),
       }),
-      columnHelper.accessor('filename', {
-        header: 'Filename',
-        cell: (info) => {
-          const item = info.row.original;
+      columnHelper.display({
+        id: 'track',
+        header: 'Track',
+        cell: ({ row }) => {
+          const item = row.original;
           const isCurrentTrack = currentTrack?.id === item.id;
           const isThisPlaying = isCurrentTrack && isPlaying;
           const isCompleted = item.download_status === 'completed';
 
+          // Use metadata if available, fall back to filename
+          const title = item.meta_title || item.filename;
+          const artist = item.meta_artist;
+          const albumArt = item.meta_album_art_url;
+
           return (
             <div className="flex items-center gap-3">
-              {isCompleted ? (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isThisPlaying) {
-                      pausePlayback();
-                    } else {
-                      playTrack(item);
-                    }
-                  }}
-                  className="flex-shrink-0 flex items-center justify-center w-8 h-8 transition-colors rounded-full bg-terminal-green hover:bg-terminal-green-dark"
+              {/* Cover Art / Play Button */}
+              <div className="relative flex-shrink-0 w-12 h-12 group">
+                {albumArt ? (
+                  <img
+                    src={albumArt}
+                    alt={title}
+                    className="object-cover w-full h-full rounded"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center w-full h-full rounded bg-dark-600">
+                    <Music className="w-5 h-5 text-gray-500" />
+                  </div>
+                )}
+                {/* Play button overlay */}
+                {isCompleted && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (isThisPlaying) {
+                        pausePlayback();
+                      } else {
+                        playTrack(item);
+                      }
+                    }}
+                    className="absolute inset-0 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
+                  >
+                    {isThisPlaying ? (
+                      <Pause className="w-5 h-5 text-terminal-green" />
+                    ) : (
+                      <Play className="w-5 h-5 ml-0.5 text-terminal-green" />
+                    )}
+                  </button>
+                )}
+                {/* Playing indicator */}
+                {isThisPlaying && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded">
+                    <div className="flex gap-0.5 items-end h-4">
+                      <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '60%' }} />
+                      <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
+                      <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Title / Artist */}
+              <div className="flex flex-col min-w-0">
+                <Link
+                  to={`/items/${item.id}`}
+                  className="font-medium truncate transition-colors hover:text-terminal-green-dark hover:underline"
+                  title={title}
                 >
-                  {isThisPlaying ? (
-                    <Pause className="w-4 h-4 text-dark-900" />
-                  ) : (
-                    <Play className="w-4 h-4 ml-0.5 text-dark-900" />
-                  )}
-                </button>
-              ) : (
-                <div className="w-8 h-8 flex-shrink-0" />
-              )}
-              <Link
-                to={`/items/${item.id}`}
-                className="font-mono transition-colors text-terminal-green hover:text-terminal-green-dark hover:underline"
-              >
-                {info.getValue()}
-              </Link>
+                  <HighlightMatch text={title} searchTerm={globalFilter} />
+                </Link>
+                {artist ? (
+                  <span className="text-sm truncate text-gray-400" title={artist}>
+                    <HighlightMatch text={artist} searchTerm={globalFilter} />
+                  </span>
+                ) : (
+                  <span className="text-sm truncate text-gray-500 italic">
+                    Unknown Artist
+                  </span>
+                )}
+              </div>
             </div>
+          );
+        },
+      }),
+      columnHelper.accessor('meta_bpm', {
+        header: 'BPM',
+        cell: (info) => {
+          const bpm = info.getValue();
+          return (
+            <span className="font-mono text-gray-400">
+              {bpm || '-'}
+            </span>
           );
         },
       }),
@@ -159,14 +260,6 @@ export function Items() {
         cell: (info) => (
           <span className="font-mono text-gray-400">
             {(info.getValue() / 1024 / 1024).toFixed(2)} MB
-          </span>
-        ),
-      }),
-      columnHelper.accessor('bitrate', {
-        header: 'Bitrate',
-        cell: (info) => (
-          <span className="font-mono text-gray-400">
-            {info.getValue() ? `${info.getValue()} kbps` : '-'}
           </span>
         ),
       }),
@@ -216,10 +309,11 @@ export function Items() {
             {row.original.download_status === 'failed' && (
               <button
                 onClick={() => {
-                  retryMutation.mutate({
-                    id: row.original.id,
-                    query: row.original.original_query,
-                  });
+                  const item = row.original;
+                  // Use original_track if available, otherwise fall back to original_query
+                  const track = item.original_track || item.original_query;
+                  const artist = item.original_artist || undefined;
+                  retryMutation.mutate({ id: item.id, track, artist });
                 }}
                 disabled={retryMutation.isPending}
                 className="px-3 py-1 text-sm btn-secondary"
@@ -242,6 +336,7 @@ export function Items() {
       globalFilter,
     },
     onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -251,6 +346,27 @@ export function Items() {
     if (selectedItemIds.length > 0 && confirm(`Delete ${selectedItemIds.length} items?`)) {
       deleteMutation.mutate(selectedItemIds);
     }
+  };
+
+  const handleRefreshMetadata = () => {
+    // Filter to only completed items (metadata only makes sense for downloaded files)
+    const completedIds = selectedItemIds.filter(id => {
+      const item = items.find(i => i.id === id);
+      return item?.download_status === 'completed';
+    });
+
+    if (completedIds.length === 0) {
+      alert('No completed items selected. Metadata can only be refreshed for downloaded items.');
+      return;
+    }
+
+    if (completedIds.length !== selectedItemIds.length) {
+      if (!confirm(`Only ${completedIds.length} of ${selectedItemIds.length} selected items are completed. Refresh metadata for those ${completedIds.length} items?`)) {
+        return;
+      }
+    }
+
+    refreshMetadataMutation.mutate(completedIds);
   };
 
   if (isLoading) {
@@ -290,16 +406,28 @@ export function Items() {
         </div>
 
         {selectedItemIds.length > 0 && (
-          <motion.button
+          <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            onClick={handleBatchDelete}
-            disabled={deleteMutation.isPending}
-            className="flex gap-2 items-center btn-secondary"
+            className="flex gap-2"
           >
-            <Trash2 className="w-4 h-4" />
-            Delete {selectedItemIds.length}
-          </motion.button>
+            <button
+              onClick={handleRefreshMetadata}
+              disabled={refreshMetadataMutation.isPending}
+              className="flex gap-2 items-center btn-secondary"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshMetadataMutation.isPending ? 'animate-spin' : ''}`} />
+              Refresh Metadata
+            </button>
+            <button
+              onClick={handleBatchDelete}
+              disabled={deleteMutation.isPending}
+              className="flex gap-2 items-center btn-secondary"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete {selectedItemIds.length}
+            </button>
+          </motion.div>
         )}
       </motion.div>
 

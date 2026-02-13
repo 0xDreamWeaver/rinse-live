@@ -1,13 +1,14 @@
-import { useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useState, useRef } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { Download, ArrowLeft, Calendar, FileText, Trash2, X, CheckSquare, Square, Play, Pause } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Download, ArrowLeft, Calendar, FileText, Trash2, X, CheckSquare, Square, Play, Pause, MoreHorizontal, Pencil, RefreshCw, Music } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore, useAudioPlayer } from '../store';
 
 export function ListDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const {
     listsNeedRefresh,
@@ -57,6 +58,94 @@ export function ListDetail() {
     },
   });
 
+  // Mutation for deleting the entire list (keep items)
+  const deleteListMutation = useMutation({
+    mutationFn: () => api.deleteList(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lists'] });
+      navigate('/lists');
+    },
+  });
+
+  // Mutation for deleting list AND items
+  const deleteListWithItemsMutation = useMutation({
+    mutationFn: () => api.deleteListWithItems(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lists'] });
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      navigate('/lists');
+    },
+  });
+
+  // Mutation for renaming list
+  const renameListMutation = useMutation({
+    mutationFn: (name: string) => api.renameList(Number(id), name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['list', id] });
+      queryClient.invalidateQueries({ queryKey: ['lists'] });
+      setShowRenameModal(false);
+      setNewListName('');
+    },
+  });
+
+  // Mutation for refreshing metadata
+  const refreshMetadataMutation = useMutation({
+    mutationFn: (ids: number[]) => api.batchRefreshMetadata(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['list', id] });
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      clearListItemSelection();
+      const successCount = data.results.filter(r => r.success).length;
+      const failCount = data.results.filter(r => !r.success).length;
+      if (failCount > 0) {
+        alert(`Metadata refreshed for ${successCount} items. ${failCount} items failed (may be rate limited).`);
+      }
+    },
+  });
+
+  // Popover and modal state
+  const [showManageMenu, setShowManageMenu] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [newListName, setNewListName] = useState('');
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowManageMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleDeleteListKeepItems = () => {
+    setShowManageMenu(false);
+    if (confirm(`Delete the list "${data?.name}"?\n\nThe items will remain in your library.`)) {
+      deleteListMutation.mutate();
+    }
+  };
+
+  const handleDeleteListAndItems = () => {
+    setShowManageMenu(false);
+    if (confirm(`Delete the list "${data?.name}" AND all its items?\n\nThis will permanently delete ${data?.items?.length || 0} files. This cannot be undone.`)) {
+      deleteListWithItemsMutation.mutate();
+    }
+  };
+
+  const handleRename = () => {
+    setShowManageMenu(false);
+    setNewListName(data?.name || '');
+    setShowRenameModal(true);
+  };
+
+  const submitRename = () => {
+    if (newListName.trim() && newListName !== data?.name) {
+      renameListMutation.mutate(newListName.trim());
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -103,6 +192,27 @@ export function ListDetail() {
     }
   };
 
+  const handleRefreshMetadata = () => {
+    // Filter to only completed items (metadata only makes sense for downloaded files)
+    const completedIds = selectedListItemIds.filter(itemId => {
+      const item = items.find(i => i.id === itemId);
+      return item?.download_status === 'completed';
+    });
+
+    if (completedIds.length === 0) {
+      alert('No completed items selected. Metadata can only be refreshed for downloaded items.');
+      return;
+    }
+
+    if (completedIds.length !== selectedListItemIds.length) {
+      if (!confirm(`Only ${completedIds.length} of ${selectedListItemIds.length} selected items are completed. Refresh metadata for those ${completedIds.length} items?`)) {
+        return;
+      }
+    }
+
+    refreshMetadataMutation.mutate(completedIds);
+  };
+
   const getStatusColor = () => {
     const colors = {
       pending: 'text-yellow-500',
@@ -137,7 +247,7 @@ export function ListDetail() {
           {list.name}
         </h1>
 
-        <div className="flex flex-wrap gap-4 text-sm font-mono">
+        <div className="flex flex-wrap items-center gap-4 text-sm font-mono">
           <div className="flex items-center gap-2 text-gray-400">
             <Calendar className="w-4 h-4" />
             {new Date(list.created_at).toLocaleDateString()}
@@ -148,6 +258,53 @@ export function ListDetail() {
           </div>
           <div className={`font-bold ${getStatusColor()}`}>
             {list.status.toUpperCase()}
+          </div>
+
+          {/* Manage List Dropdown */}
+          <div className="relative ml-auto" ref={menuRef}>
+            <button
+              onClick={() => setShowManageMenu(!showManageMenu)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-gray-400 hover:text-terminal-green border border-gray-600 hover:border-terminal-green transition-colors"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+              Manage List
+            </button>
+
+            <AnimatePresence>
+              {showManageMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="absolute right-0 mt-2 w-56 bg-dark-800 border border-dark-500 shadow-lg z-50"
+                >
+                  <button
+                    onClick={handleRename}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-300 hover:bg-dark-700 hover:text-terminal-green transition-colors"
+                  >
+                    <Pencil className="w-4 h-4" />
+                    Rename
+                  </button>
+                  <div className="border-t border-dark-600" />
+                  <button
+                    onClick={handleDeleteListAndItems}
+                    disabled={deleteListWithItemsMutation.isPending}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-400 hover:bg-dark-700 hover:text-red-300 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete List and Items
+                  </button>
+                  <button
+                    onClick={handleDeleteListKeepItems}
+                    disabled={deleteListMutation.isPending}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-orange-400 hover:bg-dark-700 hover:text-orange-300 transition-colors disabled:opacity-50"
+                  >
+                    <X className="w-4 h-4" />
+                    Delete List, Keep Items
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
@@ -194,6 +351,14 @@ export function ListDetail() {
           className="flex gap-3"
         >
           <button
+            onClick={handleRefreshMetadata}
+            disabled={refreshMetadataMutation.isPending}
+            className="flex gap-2 items-center btn-secondary"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshMetadataMutation.isPending ? 'animate-spin' : ''}`} />
+            Refresh Metadata
+          </button>
+          <button
             onClick={handleBatchRemove}
             disabled={removeFromListMutation.isPending}
             className="flex gap-2 items-center btn-secondary"
@@ -238,10 +403,10 @@ export function ListDetail() {
                 #
               </th>
               <th className="text-left px-4 py-3 font-mono text-terminal-green text-sm">
-                Filename
+                Track
               </th>
               <th className="text-left px-4 py-3 font-mono text-terminal-green text-sm">
-                Size
+                BPM
               </th>
               <th className="text-left px-4 py-3 font-mono text-terminal-green text-sm">
                 Status
@@ -255,6 +420,15 @@ export function ListDetail() {
             {items.map((item, index) => {
               const isDeleted = item.download_status === 'deleted';
               const isSelected = selectedListItemIds.includes(item.id);
+              const isCurrentTrack = currentTrack?.id === item.id;
+              const isThisPlaying = isCurrentTrack && isPlaying;
+              const isCompleted = item.download_status === 'completed';
+
+              // Use metadata if available, fall back to filename
+              const title = item.meta_title || item.filename;
+              const artist = item.meta_artist;
+              const albumArt = item.meta_album_art_url;
+
               const itemStatusColors: Record<string, string> = {
                 pending: 'text-yellow-500',
                 downloading: 'text-blue-500',
@@ -292,44 +466,81 @@ export function ListDetail() {
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <div className="flex items-center gap-3">
-                      {!isDeleted && item.download_status === 'completed' ? (
-                        <button
-                          onClick={() => {
-                            const isCurrentTrack = currentTrack?.id === item.id;
-                            const isThisPlaying = isCurrentTrack && isPlaying;
-                            if (isThisPlaying) {
-                              pausePlayback();
-                            } else {
-                              playTrack(item);
-                            }
-                          }}
-                          className="flex-shrink-0 flex items-center justify-center w-8 h-8 transition-colors rounded-full bg-terminal-green hover:bg-terminal-green-dark"
-                        >
-                          {currentTrack?.id === item.id && isPlaying ? (
-                            <Pause className="w-4 h-4 text-dark-900" />
-                          ) : (
-                            <Play className="w-4 h-4 ml-0.5 text-dark-900" />
-                          )}
-                        </button>
-                      ) : (
-                        <div className="w-8 h-8 flex-shrink-0" />
-                      )}
-                      {isDeleted ? (
-                        <span className="font-mono text-gray-500 line-through">
-                          {item.filename}
-                        </span>
-                      ) : (
-                        <Link
-                          to={`/items/${item.id}`}
-                          className="font-mono text-terminal-green hover:text-terminal-green-dark hover:underline"
-                        >
-                          {item.filename}
-                        </Link>
-                      )}
+                      {/* Cover Art / Play Button */}
+                      <div className={`relative flex-shrink-0 w-10 h-10 group ${isDeleted ? 'opacity-50' : ''}`}>
+                        {albumArt ? (
+                          <img
+                            src={albumArt}
+                            alt={title}
+                            className="object-cover w-full h-full rounded"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center w-full h-full rounded bg-dark-600">
+                            <Music className="w-4 h-4 text-gray-500" />
+                          </div>
+                        )}
+                        {/* Play button overlay */}
+                        {!isDeleted && isCompleted && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isThisPlaying) {
+                                pausePlayback();
+                              } else {
+                                playTrack(item);
+                              }
+                            }}
+                            className="absolute inset-0 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
+                          >
+                            {isThisPlaying ? (
+                              <Pause className="w-4 h-4 text-terminal-green" />
+                            ) : (
+                              <Play className="w-4 h-4 ml-0.5 text-terminal-green" />
+                            )}
+                          </button>
+                        )}
+                        {/* Playing indicator */}
+                        {isThisPlaying && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded">
+                            <div className="flex gap-0.5 items-end h-3">
+                              <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '60%' }} />
+                              <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
+                              <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Title / Artist */}
+                      <div className="flex flex-col min-w-0">
+                        {isDeleted ? (
+                          <span className="truncate text-gray-500 line-through" title={title}>
+                            {title}
+                          </span>
+                        ) : (
+                          <Link
+                            to={`/items/${item.id}`}
+                            className="font-medium truncate transition-colors text-terminal-green hover:text-terminal-green-dark hover:underline"
+                            title={title}
+                          >
+                            {title}
+                          </Link>
+                        )}
+                        {artist ? (
+                          <span className={`text-xs truncate ${isDeleted ? 'text-gray-600' : 'text-gray-400'}`} title={artist}>
+                            {artist}
+                          </span>
+                        ) : (
+                          <span className={`text-xs truncate italic ${isDeleted ? 'text-gray-600' : 'text-gray-500'}`}>
+                            Unknown Artist
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className={`px-4 py-3 text-sm font-mono ${isDeleted ? 'text-gray-600' : 'text-gray-400'}`}>
-                    {(item.file_size / 1024 / 1024).toFixed(2)} MB
+                    {item.meta_bpm || '-'}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <span
@@ -390,6 +601,55 @@ export function ListDetail() {
           </div>
         )}
       </motion.div>
+
+      {/* Rename Modal */}
+      <AnimatePresence>
+        {showRenameModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+            onClick={() => setShowRenameModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-dark-800 border border-dark-500 p-6 w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-xl font-display font-bold text-terminal-green mb-4">
+                Rename List
+              </h2>
+              <input
+                type="text"
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submitRename()}
+                className="w-full px-4 py-3 bg-dark-900 border border-dark-500 text-white font-mono focus:border-terminal-green focus:outline-none"
+                placeholder="Enter new name..."
+                autoFocus
+              />
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => setShowRenameModal(false)}
+                  className="flex-1 px-4 py-2 text-gray-400 border border-gray-600 hover:border-gray-400 transition-colors font-mono"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitRename}
+                  disabled={!newListName.trim() || newListName === data?.name || renameListMutation.isPending}
+                  className="flex-1 px-4 py-2 bg-terminal-green text-dark-900 font-mono font-bold hover:bg-terminal-green-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {renameListMutation.isPending ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
