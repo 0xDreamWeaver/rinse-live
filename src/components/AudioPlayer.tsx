@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, X } from 'lucide-react';
+import { Play, Pause, X, SkipBack, SkipForward, Shuffle, Repeat, Repeat1 } from 'lucide-react';
 import WaveSurfer from 'wavesurfer.js';
 import { useAudioPlayer } from '../store';
 import { api } from '../lib/api';
@@ -18,15 +18,54 @@ export function AudioPlayer() {
     stopPlayback,
     pausePlayback,
     resumePlayback,
+    playNext,
+    playPrevious,
+    shuffleMode,
+    loopMode,
+    toggleShuffle,
+    cycleLoopMode,
+    playbackQueue,
+    playbackHistory,
+    queueIndex,
   } = useAudioPlayer();
 
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
+  const loopModeRef = useRef(loopMode);
+  const playNextRef = useRef(playNext);
+
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [localIsPlaying, setLocalIsPlaying] = useState(false);
+
+  // Keep refs updated
+  useEffect(() => {
+    loopModeRef.current = loopMode;
+  }, [loopMode]);
+
+  useEffect(() => {
+    playNextRef.current = playNext;
+  }, [playNext]);
+
+  // Handle track end based on loop mode
+  const handleTrackEnd = useCallback(() => {
+    const currentLoopMode = loopModeRef.current;
+
+    if (currentLoopMode === 'one') {
+      // Loop single track - replay from start
+      if (wavesurferRef.current) {
+        wavesurferRef.current.seekTo(0);
+        wavesurferRef.current.play().catch((err) => {
+          console.error('Replay failed:', err);
+        });
+      }
+    } else {
+      // Loop all or off - try to play next
+      playNextRef.current();
+    }
+  }, []);
 
   // Initialize WaveSurfer when track changes
   useEffect(() => {
@@ -92,6 +131,7 @@ export function AudioPlayer() {
 
     wavesurfer.on('finish', () => {
       setLocalIsPlaying(false);
+      handleTrackEnd();
     });
 
     wavesurfer.on('error', (err) => {
@@ -104,7 +144,7 @@ export function AudioPlayer() {
       wavesurfer.destroy();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTrack?.id]);
+  }, [currentTrack?.id, handleTrackEnd]);
 
   // Sync local playing state to store (for other components to know if playing)
   useEffect(() => {
@@ -137,6 +177,23 @@ export function AudioPlayer() {
     stopPlayback();
   }, [stopPlayback]);
 
+  const handlePrevious = useCallback(() => {
+    // If we're more than 3 seconds into the track, restart it instead of going back
+    if (wavesurferRef.current && currentTime > 3) {
+      wavesurferRef.current.seekTo(0);
+    } else {
+      playPrevious();
+    }
+  }, [currentTime, playPrevious]);
+
+  const handleNext = useCallback(() => {
+    playNext();
+  }, [playNext]);
+
+  // Check if we have tracks to navigate to
+  const canGoPrevious = playbackHistory.length > 0 || queueIndex > 0 || currentTime > 3;
+  const canGoNext = playbackQueue.length > 1 || loopMode === 'all' || shuffleMode;
+
   if (!currentTrack) return null;
 
   return (
@@ -145,34 +202,88 @@ export function AudioPlayer() {
         initial={{ y: 100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 100, opacity: 0 }}
-        className="fixed bottom-0 left-0 right-0 z-40 ml-20 border-t bg-dark-800 border-dark-500"
+        className="fixed bottom-0 left-0 right-0 z-40 ml-20 border-t bg-dark-800 border-dark-500 max-h-[72px] overflow-hidden"
       >
-        <div className="flex items-center gap-4 px-6 py-3">
+        <div className="flex items-center gap-3 px-4 py-3 h-[72px]">
+          {/* Shuffle Button */}
+          <button
+            onClick={toggleShuffle}
+            className={`p-2 transition-colors ${
+              shuffleMode
+                ? 'text-terminal-green'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
+            title={shuffleMode ? 'Shuffle on' : 'Shuffle off'}
+          >
+            <Shuffle className="w-4 h-4" />
+          </button>
+
+          {/* Previous Button */}
+          <button
+            onClick={handlePrevious}
+            disabled={!canGoPrevious}
+            className="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Previous"
+          >
+            <SkipBack className="w-5 h-5" />
+          </button>
+
           {/* Play/Pause Button */}
           <button
             onClick={handlePlayPause}
             disabled={isLoading}
-            className="flex items-center justify-center w-12 h-12 transition-colors rounded-full bg-terminal-green hover:bg-terminal-green-dark disabled:opacity-50"
+            className="flex items-center justify-center w-10 h-10 transition-colors rounded-full bg-terminal-green hover:bg-terminal-green-dark disabled:opacity-50"
           >
             {isLoading ? (
-              <div className="w-5 h-5 border-2 rounded-full border-dark-900 border-t-transparent animate-spin" />
+              <div className="w-4 h-4 border-2 rounded-full border-dark-900 border-t-transparent animate-spin" />
             ) : localIsPlaying ? (
-              <Pause className="w-5 h-5 text-dark-900" />
+              <Pause className="w-4 h-4 text-dark-900" />
             ) : (
-              <Play className="w-5 h-5 ml-0.5 text-dark-900" />
+              <Play className="w-4 h-4 ml-0.5 text-dark-900" />
+            )}
+          </button>
+
+          {/* Next Button */}
+          <button
+            onClick={handleNext}
+            disabled={!canGoNext}
+            className="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Next"
+          >
+            <SkipForward className="w-5 h-5" />
+          </button>
+
+          {/* Loop Button */}
+          <button
+            onClick={cycleLoopMode}
+            className={`p-2 transition-colors ${
+              loopMode !== 'off'
+                ? 'text-terminal-green'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
+            title={
+              loopMode === 'off'
+                ? 'Loop off'
+                : loopMode === 'one'
+                ? 'Loop one'
+                : 'Loop all'
+            }
+          >
+            {loopMode === 'one' ? (
+              <Repeat1 className="w-4 h-4" />
+            ) : (
+              <Repeat className="w-4 h-4" />
             )}
           </button>
 
           {/* Track Info */}
-          <div className="flex-shrink-0 w-48 min-w-0">
+          <div className="flex-shrink-0 w-44 min-w-0 ml-2">
             <div className="font-mono text-sm truncate text-terminal-green">
-              {currentTrack.filename}
+              {currentTrack.meta_title || currentTrack.filename}
             </div>
-            {currentTrack.source_username && (
-              <div className="text-xs text-gray-500 truncate">
-                {currentTrack.source_username}
-              </div>
-            )}
+            <div className="text-xs text-gray-500 truncate">
+              {currentTrack.meta_artist || currentTrack.source_username || 'Unknown Artist'}
+            </div>
           </div>
 
           {/* Time Display */}
@@ -181,9 +292,9 @@ export function AudioPlayer() {
           </div>
 
           {/* Waveform */}
-          <div className="flex-1 min-w-0" ref={waveformRef}>
+          <div className="relative flex-1 min-w-0 h-12 overflow-hidden" ref={waveformRef}>
             {isLoading && (
-              <div className="flex items-center justify-center h-12">
+              <div className="absolute inset-0 flex items-center justify-center">
                 <div className="font-mono text-sm text-gray-500 animate-pulse">
                   Loading waveform...
                 </div>
@@ -195,6 +306,13 @@ export function AudioPlayer() {
           <div className="flex-shrink-0 font-mono text-xs text-gray-400">
             {formatTime(duration)}
           </div>
+
+          {/* Queue indicator */}
+          {playbackQueue.length > 1 && (
+            <div className="flex-shrink-0 px-2 py-1 font-mono text-xs rounded text-terminal-green bg-dark-700">
+              {queueIndex + 1}/{playbackQueue.length}
+            </div>
+          )}
 
           {/* Close Button */}
           <button

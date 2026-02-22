@@ -17,6 +17,19 @@ import type { Item } from '../types';
 
 const columnHelper = createColumnHelper<Item>();
 
+// Playing indicator bars component
+function PlayingIndicator() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded">
+      <div className="flex gap-0.5 items-end h-4">
+        <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '60%' }} />
+        <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
+        <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
+      </div>
+    </div>
+  );
+}
+
 // Highlight matching text in search results
 function HighlightMatch({ text, searchTerm }: { text: string; searchTerm: string }): ReactNode {
   if (!searchTerm || !text) return text;
@@ -56,7 +69,7 @@ export function Items() {
 
   const { selectedItemIds, toggleItemSelection, clearItemSelection, itemsNeedRefresh, setItemsNeedRefresh, activeDownloads, progressUpdates } =
     useAppStore();
-  const { currentTrack, isPlaying, playTrack, pausePlayback } = useAudioPlayer();
+  const { currentTrack, isPlaying, playTrackFromQueue, pausePlayback } = useAudioPlayer();
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['items'],
@@ -197,7 +210,12 @@ export function Items() {
                       if (isThisPlaying) {
                         pausePlayback();
                       } else {
-                        playTrack(item);
+                        // Build queue from all completed items and play from this track
+                        const completedItems = items.filter(i => i.download_status === 'completed');
+                        const trackIndex = completedItems.findIndex(i => i.id === item.id);
+                        if (trackIndex >= 0) {
+                          playTrackFromQueue(completedItems, trackIndex);
+                        }
                       }
                     }}
                     className="absolute inset-0 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
@@ -211,13 +229,7 @@ export function Items() {
                 )}
                 {/* Playing indicator */}
                 {isThisPlaying && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded">
-                    <div className="flex gap-0.5 items-end h-4">
-                      <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '60%' }} />
-                      <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
-                      <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
-                    </div>
-                  </div>
+                  <PlayingIndicator />
                 )}
               </div>
 
@@ -326,7 +338,7 @@ export function Items() {
         ),
       }),
     ],
-    [items, selectedItemIds, toggleItemSelection, clearItemSelection, currentTrack, isPlaying, playTrack, pausePlayback, retryMutation]
+    [items, selectedItemIds, toggleItemSelection, clearItemSelection, currentTrack, isPlaying, playTrackFromQueue, pausePlayback, retryMutation]
   );
 
   const table = useReactTable({

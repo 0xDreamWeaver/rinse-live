@@ -259,6 +259,10 @@ class ApiClient {
     });
   }
 
+  async getSearchHistory(limit: number = 50, offset: number = 0): Promise<import('../types').SearchHistoryResponse> {
+    return this.request(`/api/queue/history?limit=${limit}&offset=${offset}`);
+  }
+
   // WebSocket
   getWebSocketUrl(): string {
     const wsProtocol = this.baseUrl.startsWith('https') ? 'wss' : 'ws';

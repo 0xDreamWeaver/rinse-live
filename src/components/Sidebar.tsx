@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Search, Database, List, User, LogOut, Info, LogIn } from 'lucide-react';
+import { Search, Database, List, User, LogOut, Info, LogIn, History } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../store';
 import RinseLogo from '../assets/RinseLogo';
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/', icon: Search, label: 'Search' },
   { to: '/items', icon: Database, label: 'Items' },
   { to: '/lists', icon: List, label: 'Lists' },
+  { to: '/history', icon: History, label: 'History' },
   { to: '/profile', icon: User, label: 'Profile' },
 ];
 

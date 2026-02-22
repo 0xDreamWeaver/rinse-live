@@ -15,6 +15,7 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { About } from './pages/About';
+import { SearchHistory } from './pages/SearchHistory';
 import { useAuth } from './store';
 import { api } from './lib/api';
 
@@ -90,6 +91,7 @@ function App() {
               <Route path="items/:id" element={<ItemDetail />} />
               <Route path="lists" element={<Lists />} />
               <Route path="lists/:id" element={<ListDetail />} />
+              <Route path="history" element={<SearchHistory />} />
               <Route path="profile" element={<Profile />} />
             </Route>
             {/* Unprotected routes */}

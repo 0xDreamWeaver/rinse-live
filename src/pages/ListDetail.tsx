@@ -6,6 +6,19 @@ import { Download, ArrowLeft, Calendar, FileText, Trash2, X, CheckSquare, Square
 import { api } from '../lib/api';
 import { useAppStore, useAudioPlayer } from '../store';
 
+// Playing indicator bars component
+function PlayingIndicator() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded">
+      <div className="flex gap-0.5 items-end h-3">
+        <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '60%' }} />
+        <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
+        <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
+      </div>
+    </div>
+  );
+}
+
 export function ListDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -18,7 +31,7 @@ export function ListDetail() {
     clearListItemSelection,
     setSelectedListItemIds
   } = useAppStore();
-  const { currentTrack, isPlaying, playTrack, pausePlayback } = useAudioPlayer();
+  const { currentTrack, isPlaying, playTrackFromQueue, pausePlayback } = useAudioPlayer();
 
   const { data, isLoading } = useQuery({
     queryKey: ['list', id],
@@ -488,7 +501,14 @@ export function ListDetail() {
                               if (isThisPlaying) {
                                 pausePlayback();
                               } else {
-                                playTrack(item);
+                                // Build queue from all completed (non-deleted) items in this list
+                                const completedItems = items.filter(i =>
+                                  i.download_status === 'completed' && !i.deleted_at
+                                );
+                                const trackIndex = completedItems.findIndex(i => i.id === item.id);
+                                if (trackIndex >= 0) {
+                                  playTrackFromQueue(completedItems, trackIndex);
+                                }
                               }
                             }}
                             className="absolute inset-0 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
@@ -502,13 +522,7 @@ export function ListDetail() {
                         )}
                         {/* Playing indicator */}
                         {isThisPlaying && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded">
-                            <div className="flex gap-0.5 items-end h-3">
-                              <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '60%' }} />
-                              <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
-                              <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
-                            </div>
-                          </div>
+                          <PlayingIndicator />
                         )}
                       </div>
 

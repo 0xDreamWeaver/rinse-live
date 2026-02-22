@@ -13,16 +13,15 @@ export function useWebSocket() {
         const socket = new WebSocket(api.getWebSocketUrl());
 
         socket.onopen = () => {
-          console.log('WebSocket connected');
+          // Connection established
         };
 
         socket.onmessage = (event) => {
           try {
             const wsEvent: WsEvent = JSON.parse(event.data);
-            console.log('WebSocket event:', wsEvent.type, wsEvent);
             useAppStore.getState().handleWsEvent(wsEvent);
           } catch (error) {
-            console.error('Failed to parse WebSocket message:', error, event.data);
+            console.error('Failed to parse WebSocket message:', error);
           }
         };
 
@@ -31,7 +30,7 @@ export function useWebSocket() {
         };
 
         socket.onclose = () => {
-          console.log('WebSocket closed, reconnecting in 5s...');
+          // Reconnect after 5 seconds
           reconnectTimeoutRef.current = window.setTimeout(connect, 5000);
         };
 

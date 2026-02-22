@@ -227,7 +227,7 @@ export interface ActiveDownload {
   trackingId: string; // Unique client-side ID for tracking (primary key)
   itemId: number; // Backend item ID (0 until item is created)
   query: string;
-  stage: 'searching' | 'selecting' | 'downloading' | 'completed' | 'failed' | 'queued' | 'duplicate';
+  stage: 'searching' | 'processing' | 'selecting' | 'downloading' | 'completed' | 'failed' | 'queued' | 'duplicate';
   filename?: string;
   resultsCount?: number;
   usersCount?: number;
@@ -324,4 +324,25 @@ export interface MetadataJobResponse {
 export interface MetadataJobStatusResponse {
   running: boolean;
   items_without_metadata: number;
+}
+
+// Search history entry with username
+export interface SearchHistoryEntry {
+  id: number;
+  user_id: number;
+  username: string;
+  query: string;
+  original_artist: string | null;
+  original_track: string | null;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface SearchHistoryResponse {
+  entries: SearchHistoryEntry[];
+  total: number;
+  limit: number;
+  offset: number;
 }
