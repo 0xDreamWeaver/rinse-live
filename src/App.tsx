@@ -5,7 +5,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthRoute } from './components/AuthRoute';
-import { Search } from './pages/Search';
+import { Import } from './pages/Import';
 import { Items } from './pages/Items';
 import { Lists } from './pages/Lists';
 import { Profile } from './pages/Profile';
@@ -97,7 +97,7 @@ function App() {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<Search />} />
+              <Route index element={<Import />} />
               <Route path="items" element={<Items />} />
               <Route path="items/:id" element={<ItemDetail />} />
               <Route path="lists" element={<Lists />} />

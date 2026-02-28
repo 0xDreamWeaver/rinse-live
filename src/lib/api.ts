@@ -3,7 +3,7 @@ import type {
   EnqueueSearchResponse, EnqueueListResponse, QueueStatusResponse, QueueItemsResponse,
   TrackMetadata, MetadataRefreshResponse, MetadataJobResponse, MetadataJobStatusResponse,
   ListTrackRequest,
-  MusicService, OAuthConnectionStatus, OAuthConnectResponse, OAuthCallbackResponse, PlaylistsResponse
+  MusicService, OAuthConnectionStatus, OAuthConnectResponse, OAuthCallbackResponse, PlaylistsResponse, PlaylistTracksResponse
 } from '../types';
 import { useAppStore } from '../store';
 
@@ -372,6 +372,10 @@ class ApiClient {
 
   async getServicePlaylists(service: MusicService, limit: number = 50, offset: number = 0): Promise<PlaylistsResponse> {
     return this.request(`/api/oauth/${service}/playlists?limit=${limit}&offset=${offset}`);
+  }
+
+  async getPlaylistTracks(service: MusicService, playlistId: string, limit: number = 100, offset: number = 0): Promise<PlaylistTracksResponse> {
+    return this.request(`/api/oauth/${service}/playlists/${encodeURIComponent(playlistId)}/tracks?limit=${limit}&offset=${offset}`);
   }
 }
 

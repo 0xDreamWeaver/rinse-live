@@ -400,3 +400,10 @@ export interface PlaylistsResponse {
   limit: number;
   offset: number;
 }
+
+export interface PlaylistTracksResponse {
+  tracks: ExternalTrack[];
+  total: number;
+  limit: number;
+  offset: number;
+}
