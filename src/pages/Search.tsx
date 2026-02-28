@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Search as SearchIcon, Plus, Sparkles, History } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import { Link } from 'react-router-dom';
 
 function SearchFilterBox({ label, children }: { label: string; children: React.ReactNode }) {
@@ -47,7 +48,12 @@ export function Search() {
   const [listTracks, setListTracks] = useState<ListTrackInput[]>([{ track: '', artist: '' }]);
   const [listName, setListName] = useState('');
 
-  const { addPendingSearch, generateClientId } = useAppStore();
+  const { addPendingSearch, generateClientId } = useAppStore(
+    useShallow((state) => ({
+      addPendingSearch: state.addPendingSearch,
+      generateClientId: state.generateClientId,
+    }))
+  );
 
   const { data: items } = useQuery({
     queryKey: ['items'],

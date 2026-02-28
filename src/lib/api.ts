@@ -2,11 +2,14 @@ import type {
   Item, List, ListWithItems, User,
   EnqueueSearchResponse, EnqueueListResponse, QueueStatusResponse, QueueItemsResponse,
   TrackMetadata, MetadataRefreshResponse, MetadataJobResponse, MetadataJobStatusResponse,
-  ListTrackRequest
+  ListTrackRequest,
+  MusicService, OAuthConnectionStatus, OAuthConnectResponse, OAuthCallbackResponse, PlaylistsResponse
 } from '../types';
 import { useAppStore } from '../store';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// Use relative URLs by default (Vite proxy handles /api requests in dev)
+// Set VITE_API_URL for production or when not using the proxy
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 interface LoginResponse {
   token: string;
@@ -265,9 +268,18 @@ class ApiClient {
 
   // WebSocket
   getWebSocketUrl(): string {
+    const token = useAppStore.getState().token;
+
+    // If using relative URLs (proxy mode), construct WebSocket URL from current location
+    if (!this.baseUrl) {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${wsProtocol}://${window.location.host}/api/ws/progress`;
+      return token ? `${wsUrl}?token=${token}` : wsUrl;
+    }
+
+    // Otherwise use the configured base URL
     const wsProtocol = this.baseUrl.startsWith('https') ? 'wss' : 'ws';
     const url = this.baseUrl.replace(/^https?/, wsProtocol);
-    const token = useAppStore.getState().token;
     return token ? `${url}/api/ws/progress?token=${token}` : `${url}/api/ws/progress`;
   }
 
@@ -330,6 +342,36 @@ class ApiClient {
 
   async getMetadataJobStatus(): Promise<MetadataJobStatusResponse> {
     return this.request('/api/metadata/job');
+  }
+
+  // OAuth - External Service Connections
+  async getOAuthConnections(): Promise<OAuthConnectionStatus[]> {
+    return this.request('/api/oauth/connections');
+  }
+
+  async getOAuthConnectionStatus(service: MusicService): Promise<OAuthConnectionStatus> {
+    return this.request(`/api/oauth/${service}/status`);
+  }
+
+  async startOAuthConnect(service: MusicService): Promise<OAuthConnectResponse> {
+    return this.request(`/api/oauth/${service}/connect`);
+  }
+
+  async completeOAuthCallback(service: MusicService, code: string, state: string): Promise<OAuthCallbackResponse> {
+    return this.request(`/api/oauth/${service}/callback`, {
+      method: 'POST',
+      body: JSON.stringify({ code, state }),
+    });
+  }
+
+  async disconnectOAuth(service: MusicService): Promise<void> {
+    return this.request(`/api/oauth/${service}/disconnect`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getServicePlaylists(service: MusicService, limit: number = 50, offset: number = 0): Promise<PlaylistsResponse> {
+    return this.request(`/api/oauth/${service}/playlists?limit=${limit}&offset=${offset}`);
   }
 }
 

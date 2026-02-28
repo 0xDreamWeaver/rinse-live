@@ -346,3 +346,57 @@ export interface SearchHistoryResponse {
   limit: number;
   offset: number;
 }
+
+// OAuth types for external service connections
+export type MusicService = 'spotify' | 'tidal' | 'soundcloud' | 'beatport';
+
+export interface OAuthConnectionStatus {
+  service: string;
+  connected: boolean;
+  username: string | null;
+  connected_at: string | null;
+  last_used_at: string | null;
+}
+
+export interface OAuthConnectResponse {
+  auth_url: string;
+  state: string;
+}
+
+export interface OAuthCallbackRequest {
+  code: string;
+  state: string;
+}
+
+export interface OAuthCallbackResponse {
+  connected: boolean;
+  service: string;
+  username: string;
+}
+
+export interface ExternalPlaylist {
+  id: string;
+  name: string;
+  description: string | null;
+  owner_name: string;
+  track_count: number;
+  image_url: string | null;
+  external_url: string;
+  is_public: boolean;
+}
+
+export interface ExternalTrack {
+  id: string;
+  name: string;
+  artists: string[];
+  album: string | null;
+  duration_ms: number | null;
+  external_url: string;
+}
+
+export interface PlaylistsResponse {
+  playlists: ExternalPlaylist[];
+  total: number;
+  limit: number;
+  offset: number;
+}

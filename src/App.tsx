@@ -16,6 +16,7 @@ import { Register } from './pages/Register';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { About } from './pages/About';
 import { SearchHistory } from './pages/SearchHistory';
+import { OAuthCallback } from './pages/OAuthCallback';
 import { useAuth } from './store';
 import { api } from './lib/api';
 
@@ -76,6 +77,16 @@ function App() {
               }
             />
             <Route path="/verify-email" element={<VerifyEmail />} />
+
+            {/* OAuth callback - protected, needs auth to complete */}
+            <Route
+              path="/oauth/:service/callback"
+              element={
+                <ProtectedRoute>
+                  <OAuthCallback />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Protected routes */}
             <Route

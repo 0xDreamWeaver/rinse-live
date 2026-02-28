@@ -5,19 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Download, ArrowLeft, Calendar, FileText, Trash2, X, CheckSquare, Square, Play, Pause, MoreHorizontal, Pencil, RefreshCw, Music } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore, useAudioPlayer } from '../store';
-
-// Playing indicator bars component
-function PlayingIndicator() {
-  return (
-    <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded">
-      <div className="flex gap-0.5 items-end h-3">
-        <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '60%' }} />
-        <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
-        <span className="w-0.5 bg-terminal-green animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
-      </div>
-    </div>
-  );
-}
+import { useShallow } from 'zustand/react/shallow';
+import { PlayingIndicator } from '../components/PlayingIndicator';
 
 export function ListDetail() {
   const { id } = useParams<{ id: string }>();
@@ -30,7 +19,16 @@ export function ListDetail() {
     toggleListItemSelection,
     clearListItemSelection,
     setSelectedListItemIds
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      listsNeedRefresh: state.listsNeedRefresh,
+      setListsNeedRefresh: state.setListsNeedRefresh,
+      selectedListItemIds: state.selectedListItemIds,
+      toggleListItemSelection: state.toggleListItemSelection,
+      clearListItemSelection: state.clearListItemSelection,
+      setSelectedListItemIds: state.setSelectedListItemIds,
+    }))
+  );
   const { currentTrack, isPlaying, playTrackFromQueue, pausePlayback } = useAudioPlayer();
 
   const { data, isLoading } = useQuery({
@@ -493,7 +491,11 @@ export function ListDetail() {
                             <Music className="w-4 h-4 text-gray-500" />
                           </div>
                         )}
-                        {/* Play button overlay */}
+                        {/* Playing indicator (behind play button) */}
+                        {isThisPlaying && (
+                          <PlayingIndicator size="sm" />
+                        )}
+                        {/* Play/Pause button overlay (always on top) */}
                         {!isDeleted && isCompleted && (
                           <button
                             onClick={(e) => {
@@ -511,7 +513,7 @@ export function ListDetail() {
                                 }
                               }
                             }}
-                            className="absolute inset-0 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
+                            className="absolute inset-0 z-10 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
                           >
                             {isThisPlaying ? (
                               <Pause className="w-4 h-4 text-terminal-green" />
@@ -519,10 +521,6 @@ export function ListDetail() {
                               <Play className="w-4 h-4 ml-0.5 text-terminal-green" />
                             )}
                           </button>
-                        )}
-                        {/* Playing indicator */}
-                        {isThisPlaying && (
-                          <PlayingIndicator />
                         )}
                       </div>
 

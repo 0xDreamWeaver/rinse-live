@@ -12,23 +12,12 @@ import { motion } from 'framer-motion';
 import { Download, Trash2, Search, CheckSquare, Square, Loader2, Play, Pause, RotateCcw, RefreshCw, Music } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore, useAudioPlayer } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import { Link } from 'react-router-dom';
+import { PlayingIndicator } from '../components/PlayingIndicator';
 import type { Item } from '../types';
 
 const columnHelper = createColumnHelper<Item>();
-
-// Playing indicator bars component
-function PlayingIndicator() {
-  return (
-    <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded">
-      <div className="flex gap-0.5 items-end h-4">
-        <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '60%' }} />
-        <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '100%', animationDelay: '0.1s' }} />
-        <span className="w-1 bg-terminal-green animate-pulse" style={{ height: '40%', animationDelay: '0.2s' }} />
-      </div>
-    </div>
-  );
-}
 
 // Highlight matching text in search results
 function HighlightMatch({ text, searchTerm }: { text: string; searchTerm: string }): ReactNode {
@@ -68,7 +57,17 @@ export function Items() {
   const queryClient = useQueryClient();
 
   const { selectedItemIds, toggleItemSelection, clearItemSelection, itemsNeedRefresh, setItemsNeedRefresh, activeDownloads, progressUpdates } =
-    useAppStore();
+    useAppStore(
+      useShallow((state) => ({
+        selectedItemIds: state.selectedItemIds,
+        toggleItemSelection: state.toggleItemSelection,
+        clearItemSelection: state.clearItemSelection,
+        itemsNeedRefresh: state.itemsNeedRefresh,
+        setItemsNeedRefresh: state.setItemsNeedRefresh,
+        activeDownloads: state.activeDownloads,
+        progressUpdates: state.progressUpdates,
+      }))
+    );
   const { currentTrack, isPlaying, playTrackFromQueue, pausePlayback } = useAudioPlayer();
 
   const { data: items = [], isLoading } = useQuery({
@@ -202,7 +201,11 @@ export function Items() {
                     <Music className="w-5 h-5 text-gray-500" />
                   </div>
                 )}
-                {/* Play button overlay */}
+                {/* Playing indicator (behind play button) */}
+                {isThisPlaying && (
+                  <PlayingIndicator />
+                )}
+                {/* Play/Pause button overlay (always on top) */}
                 {isCompleted && (
                   <button
                     onClick={(e) => {
@@ -218,7 +221,7 @@ export function Items() {
                         }
                       }
                     }}
-                    className="absolute inset-0 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
+                    className="absolute inset-0 z-10 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
                   >
                     {isThisPlaying ? (
                       <Pause className="w-5 h-5 text-terminal-green" />
@@ -226,10 +229,6 @@ export function Items() {
                       <Play className="w-5 h-5 ml-0.5 text-terminal-green" />
                     )}
                   </button>
-                )}
-                {/* Playing indicator */}
-                {isThisPlaying && (
-                  <PlayingIndicator />
                 )}
               </div>
 

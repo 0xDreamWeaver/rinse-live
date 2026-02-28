@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import type { Item, ProgressUpdate, User, WsEvent, ActiveDownload } from '../types';
 import { api } from '../lib/api';
 
@@ -822,52 +823,47 @@ export const useAuth = () => {
 };
 
 // Convenience hook for audio player state
+// Uses useShallow to prevent re-renders when unrelated store properties change
+// NOTE: frequencyData is NOT included here - use useFrequencyData for that
+// This prevents 60fps re-renders in components that don't need frequency visualization
 export const useAudioPlayer = () => {
-  const {
-    currentTrack,
-    isPlaying,
-    playbackQueue,
-    playbackHistory,
-    shuffleMode,
-    loopMode,
-    queueIndex,
-    frequencyData,
-    setFrequencyData,
-    playTrack,
-    playTrackFromQueue,
-    pausePlayback,
-    resumePlayback,
-    stopPlayback,
-    togglePlayPause,
-    playNext,
-    playPrevious,
-    toggleShuffle,
-    cycleLoopMode,
-    hasNext,
-    hasPrevious,
-  } = useAppStore();
+  const state = useAppStore(
+    useShallow((s) => ({
+      currentTrack: s.currentTrack,
+      isPlaying: s.isPlaying,
+      playbackQueue: s.playbackQueue,
+      playbackHistory: s.playbackHistory,
+      shuffleMode: s.shuffleMode,
+      loopMode: s.loopMode,
+      queueIndex: s.queueIndex,
+      playTrack: s.playTrack,
+      playTrackFromQueue: s.playTrackFromQueue,
+      pausePlayback: s.pausePlayback,
+      resumePlayback: s.resumePlayback,
+      stopPlayback: s.stopPlayback,
+      togglePlayPause: s.togglePlayPause,
+      playNext: s.playNext,
+      playPrevious: s.playPrevious,
+      toggleShuffle: s.toggleShuffle,
+      cycleLoopMode: s.cycleLoopMode,
+      hasNext: s.hasNext,
+      hasPrevious: s.hasPrevious,
+    }))
+  );
   return {
-    currentTrack,
-    isPlaying,
-    playbackQueue,
-    playbackHistory,
-    shuffleMode,
-    loopMode,
-    queueIndex,
-    frequencyData,
-    setFrequencyData,
-    playTrack,
-    playTrackFromQueue,
-    pausePlayback,
-    resumePlayback,
-    stopPlayback,
-    togglePlayPause,
-    playNext,
-    playPrevious,
-    toggleShuffle,
-    cycleLoopMode,
-    hasNext,
-    hasPrevious,
+    ...state,
     getStreamUrl: (itemId: number) => api.getItemStreamUrl(itemId),
   };
+};
+
+// Targeted hook for frequency data - only re-renders when these specific values change
+// Used by PlayingIndicator and AudioPlayer for frequency visualization
+export const useFrequencyData = () => {
+  return useAppStore(
+    useShallow((state) => ({
+      frequencyData: state.frequencyData,
+      isPlaying: state.isPlaying,
+      setFrequencyData: state.setFrequencyData,
+    }))
+  );
 };

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Download, Trash2, Search, CheckSquare, Square, Calendar, FileText } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import { Link } from 'react-router-dom';
 
 export function Lists() {
@@ -11,7 +12,15 @@ export function Lists() {
   const queryClient = useQueryClient();
 
   const { selectedListIds, toggleListSelection, clearListSelection, listsNeedRefresh, setListsNeedRefresh } =
-    useAppStore();
+    useAppStore(
+      useShallow((state) => ({
+        selectedListIds: state.selectedListIds,
+        toggleListSelection: state.toggleListSelection,
+        clearListSelection: state.clearListSelection,
+        listsNeedRefresh: state.listsNeedRefresh,
+        setListsNeedRefresh: state.setListsNeedRefresh,
+      }))
+    );
 
   const { data: lists = [], isLoading } = useQuery({
     queryKey: ['lists'],
