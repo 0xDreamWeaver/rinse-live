@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, ArrowLeft, Clock, HardDrive, Music, User, Play, Pause, Disc, Calendar, Tag, Hash, Building2, Search, Trash2, RefreshCw, MoreHorizontal } from 'lucide-react';
+import { CoverArt } from '../components/CoverArt';
+import { PlayingIndicator } from '../components/PlayingIndicator';
 import { api } from '../lib/api';
 import { useAudioPlayer } from '../store';
 
 export function ItemDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { currentTrack, isPlaying, playTrack, pausePlayback } = useAudioPlayer();
   const queryClient = useQueryClient();
 
@@ -74,7 +77,7 @@ export function ItemDetail() {
 
   if (!item) {
     return (
-      <div className="card-terminal text-center py-12">
+      <div className="card-terminal p-6 text-center py-12">
         <p className="font-mono text-red-500">Item not found</p>
       </div>
     );
@@ -136,10 +139,13 @@ export function ItemDetail() {
     <div className="space-y-6">
       {/* Back Button */}
       <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-        <Link to="/items" className="inline-flex items-center gap-2 text-terminal-green hover:text-terminal-green-dark transition-colors font-mono">
+        <button
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-2 text-terminal-green hover:text-terminal-green-dark transition-colors font-mono"
+        >
           <ArrowLeft className="w-4 h-4" />
-          Back to Tracks
-        </Link>
+          Back
+        </button>
       </motion.div>
 
       {/* Header with Cover Art */}
@@ -151,18 +157,21 @@ export function ItemDetail() {
       >
         {/* Cover Art */}
         <div className="relative flex-shrink-0 w-48 h-48 group">
-          {albumArt ? (
-            <img
-              src={albumArt}
-              alt={title}
-              className="object-cover w-full h-full rounded-lg shadow-lg"
-            />
-          ) : (
-            <div className="flex items-center justify-center w-full h-full rounded-lg bg-dark-700 shadow-lg">
-              <Music className="w-16 h-16 text-gray-500" />
+          <CoverArt
+            itemId={item.id}
+            albumArtUrl={albumArt}
+            size="full"
+            alt={title}
+            className="w-full h-full rounded-lg shadow-lg"
+            iconClassName="w-16 h-16 text-gray-500"
+          />
+          {/* Playing indicator — visible when playing, hides on hover to reveal play/pause */}
+          {isThisPlaying && (
+            <div className="group-hover:opacity-0 transition-opacity">
+              <PlayingIndicator size="lg" />
             </div>
           )}
-          {/* Play button overlay */}
+          {/* Play/Pause button overlay — visible on hover */}
           {item.download_status === 'completed' && (
             <button
               onClick={() => {
@@ -180,16 +189,6 @@ export function ItemDetail() {
                 <Play className="w-12 h-12 ml-1 text-terminal-green" />
               )}
             </button>
-          )}
-          {/* Playing indicator */}
-          {isThisPlaying && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
-              <div className="flex gap-1 items-end h-8">
-                <span className="w-2 bg-terminal-green animate-pulse rounded" style={{ height: '60%' }} />
-                <span className="w-2 bg-terminal-green animate-pulse rounded" style={{ height: '100%', animationDelay: '0.1s' }} />
-                <span className="w-2 bg-terminal-green animate-pulse rounded" style={{ height: '40%', animationDelay: '0.2s' }} />
-              </div>
-            </div>
           )}
         </div>
 
@@ -285,7 +284,7 @@ export function ItemDetail() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.3 + index * 0.05 }}
-                className="card-terminal"
+                className="card-terminal p-6"
               >
                 <div className="flex items-start gap-3">
                   <field.icon className="w-5 h-5 text-terminal-green mt-0.5" />
@@ -318,7 +317,7 @@ export function ItemDetail() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.4 + index * 0.05 }}
-              className="card-terminal"
+              className="card-terminal p-6"
             >
               <div className="flex items-start gap-3">
                 <field.icon className="w-5 h-5 text-terminal-green mt-0.5" />
@@ -339,7 +338,7 @@ export function ItemDetail() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="card-terminal"
+          className="card-terminal p-6"
         >
           <div className="space-y-2">
             <div className="flex justify-between text-sm font-mono">
@@ -364,7 +363,7 @@ export function ItemDetail() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="card-terminal border-red-500"
+          className="card-terminal p-6 border-red-500"
         >
           <div className="text-red-500 font-mono text-sm">{item.error_message}</div>
         </motion.div>

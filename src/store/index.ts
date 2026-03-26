@@ -16,6 +16,7 @@ interface AppStore {
   isAuthenticated: boolean;
   isLoading: boolean;
   setAuth: (token: string, user: User) => void;
+  updateUser: (updates: Partial<User>) => void;
   clearAuth: () => void;
   setLoading: (loading: boolean) => void;
 
@@ -102,6 +103,10 @@ export const useAppStore = create<AppStore>()(
           isAuthenticated: true,
           isLoading: false,
         }),
+      updateUser: (updates) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, ...updates } : null,
+        })),
       clearAuth: () =>
         set({
           token: null,
@@ -153,7 +158,17 @@ export const useAppStore = create<AppStore>()(
 
       handleWsEvent: (event) =>
         set((state) => {
-          const downloads = new Map(state.activeDownloads);
+          // Lazy copy-on-write: only create a new Map when a branch actually modifies downloads.
+          // This prevents new Map references (and thus re-renders) for events that don't touch downloads.
+          let downloads = state.activeDownloads;
+          let downloadsCopied = false;
+          const copyDownloads = () => {
+            if (!downloadsCopied) {
+              downloads = new Map(state.activeDownloads);
+              downloadsCopied = true;
+            }
+            return downloads;
+          };
           let needsRefresh = state.itemsNeedRefresh;
           let clientIdToAutoCleanup: string | null = null;
           let itemIdToCleanupProgress: number | null = null;
@@ -229,14 +244,14 @@ export const useAppStore = create<AppStore>()(
                 if (advancedStages.includes(existing.stage)) {
                   break;
                 }
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   itemId: event.item_id || existing.itemId,
                   stage: 'searching',
                 });
               } else if (event.client_id) {
                 // Create new entry keyed by client_id
-                downloads.set(event.client_id, {
+                copyDownloads().set(event.client_id, {
                   trackingId: event.client_id,
                   itemId: event.item_id || 0,
                   query: event.query,
@@ -249,7 +264,7 @@ export const useAppStore = create<AppStore>()(
                 if (byQuery) {
                   const [key, existing] = byQuery;
                   if (!['duplicate', 'completed', 'failed', 'downloading'].includes(existing.stage)) {
-                    downloads.set(key, {
+                    copyDownloads().set(key, {
                       ...existing,
                       itemId: event.item_id || existing.itemId,
                       stage: 'searching',
@@ -258,7 +273,7 @@ export const useAppStore = create<AppStore>()(
                 } else {
                   // No client_id and no existing entry - create new with generated id
                   const trackingId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                  downloads.set(trackingId, {
+                  copyDownloads().set(trackingId, {
                     trackingId,
                     itemId: event.item_id || 0,
                     query: event.query,
@@ -274,14 +289,14 @@ export const useAppStore = create<AppStore>()(
               const found = findEntry(event.client_id, 0, event.query, ['searching', 'queued']);
               if (found) {
                 const [key, existing] = found;
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   stage: 'processing',
                   queueId: event.queue_id,
                 });
               } else if (event.client_id) {
                 // Create new entry if we don't have one
-                downloads.set(event.client_id, {
+                copyDownloads().set(event.client_id, {
                   trackingId: event.client_id,
                   itemId: 0,
                   query: event.query,
@@ -297,7 +312,7 @@ export const useAppStore = create<AppStore>()(
               const found = findEntry(event.client_id, event.item_id || 0, undefined, ['searching', 'processing']);
               if (found) {
                 const [key, existing] = found;
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   itemId: event.item_id || existing.itemId,
                   resultsCount: event.results_count,
@@ -311,7 +326,7 @@ export const useAppStore = create<AppStore>()(
               const found = findEntry(event.client_id, event.item_id || 0, undefined, ['searching', 'processing', 'selecting']);
               if (found) {
                 const [key, existing] = found;
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   itemId: event.item_id || existing.itemId,
                   stage: 'selecting',
@@ -338,7 +353,7 @@ export const useAppStore = create<AppStore>()(
                 } else if (event.error.length > 50) {
                   simplifiedError = event.error.substring(0, 47) + '...';
                 }
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   stage: 'failed',
                   error: simplifiedError,
@@ -364,7 +379,7 @@ export const useAppStore = create<AppStore>()(
               }
               if (found) {
                 const [key, existing] = found;
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   itemId: event.item_id,
                   stage: 'downloading',
@@ -375,7 +390,7 @@ export const useAppStore = create<AppStore>()(
                 });
               } else if (event.client_id) {
                 // Create new entry keyed by client_id
-                downloads.set(event.client_id, {
+                copyDownloads().set(event.client_id, {
                   trackingId: event.client_id,
                   itemId: event.item_id,
                   query: '',
@@ -389,7 +404,7 @@ export const useAppStore = create<AppStore>()(
               } else {
                 // Download started without prior search tracking - create entry with generated id
                 const trackingId = `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                downloads.set(trackingId, {
+                copyDownloads().set(trackingId, {
                   trackingId,
                   itemId: event.item_id,
                   query: '',
@@ -409,7 +424,7 @@ export const useAppStore = create<AppStore>()(
               const found = findEntry(event.client_id, event.item_id, undefined, undefined);
               if (found) {
                 const [key, existing] = found;
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   bytesDownloaded: event.bytes_downloaded,
                   totalBytes: event.total_bytes,
@@ -424,7 +439,7 @@ export const useAppStore = create<AppStore>()(
               const found = findEntry(event.client_id, event.item_id, undefined, undefined);
               if (found) {
                 const [key, existing] = found;
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   stage: 'completed',
                   filename: event.filename,
@@ -454,7 +469,7 @@ export const useAppStore = create<AppStore>()(
               }
               if (found) {
                 const [key, existing] = found;
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   itemId: event.item_id,
                   stage: 'failed',
@@ -483,7 +498,7 @@ export const useAppStore = create<AppStore>()(
               }
               if (found) {
                 const [key, existing] = found;
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   itemId: event.item_id,
                   stage: 'queued',
@@ -499,7 +514,7 @@ export const useAppStore = create<AppStore>()(
               let keyToCleanup: string | null = null;
               if (found) {
                 const [key, existing] = found;
-                downloads.set(key, {
+                copyDownloads().set(key, {
                   ...existing,
                   itemId: event.item_id,
                   stage: 'duplicate',
@@ -508,7 +523,7 @@ export const useAppStore = create<AppStore>()(
                 keyToCleanup = key;
               } else if (event.client_id) {
                 // Create new entry keyed by client_id
-                downloads.set(event.client_id, {
+                copyDownloads().set(event.client_id, {
                   trackingId: event.client_id,
                   itemId: event.item_id,
                   query: event.query,
@@ -520,7 +535,7 @@ export const useAppStore = create<AppStore>()(
               } else {
                 // Create new entry for duplicate with generated id
                 const trackingId = `dup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                downloads.set(trackingId, {
+                copyDownloads().set(trackingId, {
                   trackingId,
                   itemId: event.item_id,
                   query: event.query,
@@ -545,16 +560,15 @@ export const useAppStore = create<AppStore>()(
                 status: event.status,
                 progress: event.progress,
               });
-              needsRefresh = true;
-              return { activeDownloads: downloads, progressUpdates: newUpdates, itemsNeedRefresh: needsRefresh };
+              return { progressUpdates: newUpdates, itemsNeedRefresh: true };
             }
             case 'list_created': {
               // A new list was created - refresh lists
-              return { activeDownloads: downloads, itemsNeedRefresh: needsRefresh, listsNeedRefresh: true };
+              return { listsNeedRefresh: true };
             }
             case 'list_progress': {
               // List progress updated - refresh lists
-              return { activeDownloads: downloads, itemsNeedRefresh: needsRefresh, listsNeedRefresh: true };
+              return { listsNeedRefresh: true };
             }
           }
 
@@ -816,11 +830,21 @@ export const useAppStore = create<AppStore>()(
 );
 
 // Convenience hook for auth state
-export const useAuth = () => {
-  const { token, user, isAuthenticated, isLoading, setAuth, clearAuth, setLoading } =
-    useAppStore();
-  return { token, user, isAuthenticated, isLoading, setAuth, clearAuth, setLoading };
-};
+// Uses useShallow to prevent re-renders when unrelated store properties change
+// (e.g., frequencyData updating 60fps during audio playback)
+export const useAuth = () =>
+  useAppStore(
+    useShallow((state) => ({
+      token: state.token,
+      user: state.user,
+      isAuthenticated: state.isAuthenticated,
+      isLoading: state.isLoading,
+      setAuth: state.setAuth,
+      updateUser: state.updateUser,
+      clearAuth: state.clearAuth,
+      setLoading: state.setLoading,
+    }))
+  );
 
 // Convenience hook for audio player state
 // Uses useShallow to prevent re-renders when unrelated store properties change

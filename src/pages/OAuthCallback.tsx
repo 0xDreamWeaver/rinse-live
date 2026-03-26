@@ -81,7 +81,7 @@ export function OAuthCallback() {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="card-terminal max-w-md w-full text-center"
+        className="card-terminal p-6 max-w-md w-full text-center"
       >
         {state === 'processing' && (
           <div className="space-y-4">

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Search as SearchIcon,
   Plus,
   Sparkles,
   ChevronDown,
@@ -12,6 +11,8 @@ import {
   Clock,
   ArrowRight,
   SlidersHorizontal,
+  User,
+  Music,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store';
@@ -107,14 +108,17 @@ export function Import() {
 
   const queueListMutation = useMutation({
     mutationFn: async (data: { tracks: ListTrackInput[]; name?: string; format?: string }) => {
+      const clientIds: string[] = [];
       data.tracks.forEach(t => {
-        const displayQuery = t.artist.trim() ? `${t.artist.trim()} - ${t.track.trim()}` : t.track.trim();
         const clientId = generateClientId();
+        clientIds.push(clientId);
+        const displayQuery = t.artist.trim() ? `${t.artist.trim()} - ${t.track.trim()}` : t.track.trim();
         addPendingSearch(displayQuery, clientId);
       });
-      const apiTracks = data.tracks.map(t => ({
+      const apiTracks = data.tracks.map((t, i) => ({
         track: t.track.trim(),
         artist: t.artist.trim() || undefined,
+        client_id: clientIds[i],
       }));
       return api.queueList(apiTracks, data.name, data.format);
     },
@@ -175,7 +179,7 @@ export function Import() {
         const data = await api.getPlaylistTracks(service, playlist.id, limit, offset);
         const tracks = data.tracks.map(t => ({
           track: t.name,
-          artist: t.artists.join(', '),
+          artist: t.artists[0] || '',
         }));
         allTracks = [...allTracks, ...tracks];
 
@@ -185,16 +189,19 @@ export function Import() {
 
       // Queue all tracks as a list
       if (allTracks.length > 0) {
+        const clientIds: string[] = [];
         allTracks.forEach(t => {
-          const displayQuery = t.artist ? `${t.artist} - ${t.track}` : t.track;
           const clientId = generateClientId();
+          clientIds.push(clientId);
+          const displayQuery = t.artist ? `${t.artist} - ${t.track}` : t.track;
           addPendingSearch(displayQuery, clientId);
         });
 
         await api.queueList(
-          allTracks.map(t => ({
+          allTracks.map((t, i) => ({
             track: t.track,
             artist: t.artist || undefined,
+            client_id: clientIds[i],
           })),
           playlist.name,
           format === 'any' ? undefined : format
@@ -232,7 +239,7 @@ export function Import() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-start justify-between"
+        className="flex justify-between items-start"
       >
         <div className="space-y-1">
           <h1 className="text-4xl font-bold font-display text-terminal-green">
@@ -248,10 +255,10 @@ export function Import() {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="flex items-center gap-2 px-3 py-2 border rounded border-terminal-green/50 bg-terminal-green/10"
+            className="flex gap-2 items-center px-3 py-2 rounded border border-terminal-green/50 bg-terminal-green/10"
           >
-            <Loader2 className="w-4 h-4 text-terminal-green animate-spin" />
-            <span className="text-sm font-mono text-terminal-green">
+            <Loader2 className="w-4 h-4 animate-spin text-terminal-green" />
+            <span className="font-mono text-sm text-terminal-green">
               {activeCount > 0 ? `${activeCount} active` : ''}{activeCount > 0 && pendingCount > 0 ? ', ' : ''}{pendingCount > 0 ? `${pendingCount} queued` : ''}
             </span>
           </motion.div>
@@ -265,34 +272,35 @@ export function Import() {
         transition={{ delay: 0.1 }}
         className="space-y-4"
       >
-        <h2 className="text-lg font-display font-bold text-gray-400">
+        <h2 className="text-lg font-bold text-gray-400 font-display">
           Search
         </h2>
 
-        <div className="card-terminal">
+        <div className="overflow-visible p-6 card-terminal">
           {/* Single Track Form */}
           <form onSubmit={handleSearchItem} className="space-y-4">
             <div className="flex gap-2">
               {/* Artist input */}
-              <div className="w-1/4">
+              <div className="relative w-1/3">
+                <User className="absolute left-3 top-1/2 w-4 h-4 text-gray-500 -translate-y-1/2" />
                 <input
                   type="text"
                   value={artist}
                   onChange={(e) => setArtist(e.target.value)}
                   placeholder="Artist (optional)"
-                  className="w-full input-terminal text-sm"
+                  className="pl-10 w-full h-full text-sm input-terminal"
                 />
               </div>
 
               {/* Track input */}
-              <div className="flex-1 relative">
-                <SearchIcon className="absolute left-3 top-1/2 w-4 h-4 text-gray-500 -translate-y-1/2" />
+              <div className="relative flex-1">
+                <Music className="absolute left-3 top-1/2 w-4 h-4 text-gray-500 -translate-y-1/2" />
                 <input
                   type="text"
                   value={track}
                   onChange={(e) => setTrack(e.target.value)}
                   placeholder="Track name"
-                  className="pl-10 w-full input-terminal text-sm"
+                  className="pl-10 w-full h-full text-sm input-terminal"
                 />
               </div>
 
@@ -301,20 +309,23 @@ export function Import() {
                 <button
                   type="button"
                   onClick={() => setShowFormatDropdown(!showFormatDropdown)}
-                  className="flex items-center gap-2 px-3 h-full border border-dark-500 bg-dark-700 text-sm font-mono text-gray-400 hover:border-gray-500 transition-colors"
+                  className="flex gap-2 items-center px-3 w-28 h-full font-mono text-sm text-gray-400 border transition-colors border-dark-500 bg-dark-700 hover:border-gray-500"
                 >
-                  <SlidersHorizontal className="w-4 h-4" />
+                  <SlidersHorizontal className="w-4 h-4 min-w-4" />
                   <span>{format === 'any' ? 'Format' : format.toUpperCase()}</span>
-                  <ChevronDown className="w-3 h-3" />
+                  <div className="flex justify-end w-full">
+                    <ChevronDown className="w-3 h-3" />
+                  </div>
                 </button>
 
                 <AnimatePresence>
                   {showFormatDropdown && (
                     <motion.div
-                      initial={{ opacity: 0, y: -10 }}
+                      initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="absolute right-0 top-full mt-1 z-10 bg-dark-800 border border-dark-500 shadow-lg"
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.1, ease: "easeOut" }}
+                      className="absolute right-0 top-full z-10 mt-1 border shadow-lg bg-dark-800 border-dark-500"
                     >
                       {FORMAT_OPTIONS.map((opt) => (
                         <button
@@ -342,7 +353,7 @@ export function Import() {
               <button
                 type="submit"
                 disabled={!track.trim() || queueSearchMutation.isPending}
-                className="px-6 btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="flex gap-2 items-center px-6 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {queueSearchMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -386,11 +397,11 @@ export function Import() {
           </form>
 
           {/* Multi-track toggle */}
-          <div className="mt-4 pt-4 border-t border-dark-500">
+          <div className="pt-4 mt-4 border-t border-dark-500">
             <button
               type="button"
               onClick={() => setShowMultiTrack(!showMultiTrack)}
-              className="flex items-center gap-2 text-sm text-gray-500 hover:text-terminal-green transition-colors"
+              className="flex gap-2 items-center text-sm text-gray-500 transition-colors hover:text-terminal-green"
             >
               {showMultiTrack ? (
                 <ChevronUp className="w-4 h-4" />
@@ -407,7 +418,7 @@ export function Import() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden"
+                  className=""
                 >
                   <form onSubmit={handleSearchList} className="mt-4 space-y-4">
                     {/* List name */}
@@ -417,7 +428,7 @@ export function Import() {
                         value={listName}
                         onChange={(e) => setListName(e.target.value)}
                         placeholder="List name (optional)"
-                        className="w-full input-terminal text-sm"
+                        className="w-full text-sm input-terminal"
                       />
                     </div>
 
@@ -435,20 +446,20 @@ export function Import() {
                             value={item.artist}
                             onChange={(e) => updateListTrack(index, 'artist', e.target.value)}
                             placeholder="Artist"
-                            className="w-1/3 input-terminal text-sm"
+                            className="w-1/3 text-sm input-terminal"
                           />
                           <input
                             type="text"
                             value={item.track}
                             onChange={(e) => updateListTrack(index, 'track', e.target.value)}
                             placeholder={`Track ${index + 1}`}
-                            className="flex-1 input-terminal text-sm"
+                            className="flex-1 text-sm input-terminal"
                           />
                           {listTracks.length > 1 && (
                             <button
                               type="button"
                               onClick={() => removeListTrack(index)}
-                              className="px-2 text-gray-500 hover:text-red-500 transition-colors"
+                              className="px-2 text-gray-500 transition-colors hover:text-red-500"
                             >
                               <X className="w-4 h-4" />
                             </button>
@@ -459,7 +470,7 @@ export function Import() {
                       <button
                         type="button"
                         onClick={addListTrack}
-                        className="flex gap-2 items-center text-sm text-gray-500 hover:text-terminal-green transition-colors"
+                        className="flex gap-2 items-center text-sm text-gray-500 transition-colors hover:text-terminal-green"
                       >
                         <Plus className="w-4 h-4" />
                         Add another track
@@ -469,7 +480,7 @@ export function Import() {
                     <button
                       type="submit"
                       disabled={validTrackCount === 0 || queueListMutation.isPending}
-                      className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="flex gap-2 justify-center items-center w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {queueListMutation.isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -509,7 +520,7 @@ export function Import() {
         transition={{ delay: 0.2 }}
         className="space-y-4"
       >
-        <h2 className="text-lg font-display font-bold text-gray-400">
+        <h2 className="text-lg font-bold text-gray-400 font-display">
           Import from Services
         </h2>
 
@@ -529,24 +540,24 @@ export function Import() {
         transition={{ delay: 0.3 }}
         className="space-y-4"
       >
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-display font-bold text-gray-400">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-bold text-gray-400 font-display">
             Recent Activity
           </h2>
           <Link
             to="/history"
-            className="flex items-center gap-1 text-sm text-gray-500 hover:text-terminal-green transition-colors"
+            className="flex gap-1 items-center text-sm text-gray-500 transition-colors hover:text-terminal-green"
           >
             View History
             <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
 
-        <div className="card-terminal">
-          <div className="text-center py-6 text-gray-500 text-sm">
-            <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+        <div className="p-6 card-terminal">
+          <div className="py-6 text-sm text-center text-gray-500">
+            <Clock className="mx-auto mb-2 w-8 h-8 opacity-50" />
             <p>Recent imports will appear here</p>
-            <p className="text-xs mt-1">Activity feed coming soon</p>
+            <p className="mt-1 text-xs">Activity feed coming soon</p>
           </div>
         </div>
       </motion.section>

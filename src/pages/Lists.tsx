@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Download, Trash2, Search, CheckSquare, Square, Calendar, FileText } from 'lucide-react';
+import { Download, Trash2, Search, CheckSquare, Square, Calendar, FileText, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store';
 import { useShallow } from 'zustand/react/shallow';
@@ -35,13 +35,47 @@ export function Lists() {
     }
   }, [listsNeedRefresh, queryClient, setListsNeedRefresh]);
 
-  const deleteMutation = useMutation({
+  const [showDeleteMenu, setShowDeleteMenu] = useState(false);
+  const deleteMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close delete menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (deleteMenuRef.current && !deleteMenuRef.current.contains(e.target as Node)) {
+        setShowDeleteMenu(false);
+      }
+    };
+    if (showDeleteMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showDeleteMenu]);
+
+  // Delete lists only (keep items in library)
+  const deleteKeepItemsMutation = useMutation({
     mutationFn: (ids: number[]) => api.batchDeleteLists(ids),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lists'] });
+      queryClient.invalidateQueries({ queryKey: ['items'] });
       clearListSelection();
     },
   });
+
+  // Delete lists and their items
+  const deleteWithItemsMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      for (const id of ids) {
+        await api.deleteListWithItems(id);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lists'] });
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      clearListSelection();
+    },
+  });
+
+  const isDeleting = deleteKeepItemsMutation.isPending || deleteWithItemsMutation.isPending;
 
   const filteredLists = lists.filter(
     (list) =>
@@ -49,12 +83,23 @@ export function Lists() {
       list.status.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleBatchDelete = () => {
+  const handleDeleteKeepItems = () => {
+    setShowDeleteMenu(false);
     if (
       selectedListIds.length > 0 &&
-      confirm(`Delete ${selectedListIds.length} lists?`)
+      confirm(`Delete ${selectedListIds.length} list(s)? Items will remain in your library.`)
     ) {
-      deleteMutation.mutate(selectedListIds);
+      deleteKeepItemsMutation.mutate(selectedListIds);
+    }
+  };
+
+  const handleDeleteWithItems = () => {
+    setShowDeleteMenu(false);
+    if (
+      selectedListIds.length > 0 &&
+      confirm(`Delete ${selectedListIds.length} list(s) AND all their items? This will permanently delete the files.`)
+    ) {
+      deleteWithItemsMutation.mutate(selectedListIds);
     }
   };
 
@@ -106,16 +151,42 @@ export function Lists() {
         </div>
 
         {selectedListIds.length > 0 && (
-          <motion.button
+          <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            onClick={handleBatchDelete}
-            disabled={deleteMutation.isPending}
-            className="flex gap-2 items-center btn-secondary"
+            className="relative"
+            ref={deleteMenuRef}
           >
-            <Trash2 className="w-4 h-4" />
-            Delete {selectedListIds.length}
-          </motion.button>
+            <button
+              onClick={() => setShowDeleteMenu(!showDeleteMenu)}
+              disabled={isDeleting}
+              className="flex gap-2 items-center btn-secondary"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete {selectedListIds.length}
+              <ChevronDown className="w-3 h-3" />
+            </button>
+
+            {showDeleteMenu && (
+              <div className="absolute right-0 z-50 mt-2 w-64 border shadow-lg bg-dark-800 border-dark-600">
+                <button
+                  onClick={handleDeleteWithItems}
+                  className="block w-full px-4 py-3 text-left text-sm transition-colors hover:bg-dark-700"
+                >
+                  <div className="font-medium text-red-400">Delete Lists and Items</div>
+                  <div className="mt-1 text-xs text-gray-500">Permanently delete files from disk</div>
+                </button>
+                <div className="border-t border-dark-600" />
+                <button
+                  onClick={handleDeleteKeepItems}
+                  className="block w-full px-4 py-3 text-left text-sm transition-colors hover:bg-dark-700"
+                >
+                  <div className="font-medium text-gray-300">Delete Lists, Keep Items</div>
+                  <div className="mt-1 text-xs text-gray-500">Items remain in your library</div>
+                </button>
+              </div>
+            )}
+          </motion.div>
         )}
       </motion.div>
 
@@ -158,7 +229,7 @@ export function Lists() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: index * 0.05 }}
-                className={`card-terminal relative ${
+                className={`card-terminal p-6 relative ${
                   isSelected ? 'border-terminal-green terminal-box-glow' : ''}`}
               >
                 {/* Selection Checkbox */}
@@ -199,8 +270,8 @@ export function Lists() {
                     </div>
                   </div>
 
-                  {/* Progress Bar */}
-                  {list.status === 'downloading' || list.status === 'partial' ? (
+                  {/* Progress Bar - downloading */}
+                  {list.status === 'downloading' && (
                     <div className="space-y-1">
                       <div className="overflow-hidden h-2 border bg-dark-700 border-dark-500">
                         <motion.div
@@ -214,7 +285,30 @@ export function Lists() {
                         {progress.toFixed(0)}%)
                       </div>
                     </div>
-                  ) : null}
+                  )}
+
+                  {/* Completion summary - partial */}
+                  {list.status === 'partial' && (
+                    <div className="space-y-1">
+                      <div className="flex overflow-hidden h-2 border bg-dark-700 border-dark-500">
+                        <div
+                          style={{ width: `${(list.completed_items / list.total_items) * 100}%` }}
+                          className="h-full bg-terminal-green"
+                        />
+                        <div
+                          style={{ width: `${(list.failed_items / list.total_items) * 100}%` }}
+                          className="h-full bg-red-500/60"
+                        />
+                      </div>
+                      <div className="font-mono text-xs text-right text-gray-500">
+                        <span className="text-terminal-green">{list.completed_items}</span>
+                        {' / '}
+                        <span className="text-red-500">{list.failed_items}</span>
+                        {' / '}
+                        {list.total_items}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Stats */}
                   <div className="flex gap-4 font-mono text-xs">
@@ -228,7 +322,7 @@ export function Lists() {
                 </Link>
 
                 {/* Download Button */}
-                {list.status === 'completed' && (
+                {(list.status === 'completed' || list.status === 'partial') && list.completed_items > 0 && (
                   <a
                     href={api.getListDownloadUrl(list.id)}
                     download
@@ -248,7 +342,7 @@ export function Lists() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="py-12 font-mono text-center text-gray-500 card-terminal"
+          className="py-12 font-mono text-center text-gray-500 card-terminal p-6"
         >
           No lists found
         </motion.div>

@@ -225,7 +225,7 @@ export function PlaylistBrowser({
                 <span className="w-1.5 h-1.5 rounded-full bg-terminal-green" />
               )}
               {!service.enabled && (
-                <span className="text-xs text-yellow-600 ml-1">Soon</span>
+                <span className="ml-1 text-xs text-yellow-600">Soon</span>
               )}
               {isActive && (
                 <motion.div
@@ -242,28 +242,28 @@ export function PlaylistBrowser({
       {/* Service Content */}
       <div className="p-4">
         {isLoadingConnections ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 text-terminal-green animate-spin" />
+          <div className="flex justify-center items-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-terminal-green" />
           </div>
         ) : !activeServiceConfig?.enabled ? (
-          <div className="text-center py-12">
+          <div className="py-12 text-center">
             <div className="flex justify-center mb-4 text-gray-600">
               {activeServiceConfig && <activeServiceConfig.Icon size={48} />}
             </div>
             <p className="text-gray-500">{activeServiceConfig?.name} integration coming soon</p>
           </div>
         ) : !isConnected ? (
-          <div className="text-center py-12">
+          <div className="py-12 text-center">
             <div className="flex justify-center mb-4 text-gray-500">
               {activeServiceConfig && <activeServiceConfig.Icon size={48} />}
             </div>
-            <p className="text-gray-400 mb-4">
+            <p className="mb-4 text-gray-400">
               Connect your {activeServiceConfig?.name} account to import playlists
             </p>
             <button
               onClick={() => handleConnect(activeService)}
               disabled={connectingService === activeService}
-              className="btn-primary flex items-center gap-2 mx-auto"
+              className="flex gap-2 items-center mx-auto btn-primary"
             >
               {connectingService === activeService ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -276,8 +276,8 @@ export function PlaylistBrowser({
         ) : (
           <div className="space-y-4">
             {/* Connected Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="flex justify-between items-center">
+              <div className="flex gap-3 items-center">
                 <span
                   className="text-sm px-2 py-0.5 rounded"
                   style={{
@@ -285,12 +285,12 @@ export function PlaylistBrowser({
                     color: activeServiceConfig?.color,
                   }}
                 >
-                  Connected as {activeConnection?.username}
+                  Connected{activeConnection?.username ? ` as ${activeConnection.username}` : ''}
                 </span>
                 <button
                   onClick={handleDisconnect}
                   disabled={disconnectMutation.isPending}
-                  className="text-xs text-gray-500 hover:text-red-500 transition-colors"
+                  className="text-xs text-gray-500 transition-colors hover:text-red-500"
                 >
                   Disconnect
                 </button>
@@ -308,7 +308,7 @@ export function PlaylistBrowser({
             {/* Playlists Container */}
             <div className="relative">
               {/* Top marker for intersection observer */}
-              <div ref={playlistsStartRef} className="absolute top-0 left-0 h-px w-full" />
+              <div ref={playlistsStartRef} className="absolute top-0 left-0 w-full h-px" />
 
               {/* Fixed Floating Pagination Bar (top) */}
               <AnimatePresence>
@@ -319,11 +319,11 @@ export function PlaylistBrowser({
                     exit={{ y: -20, opacity: 0 }}
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                     style={floatingBarStyle}
-                    className="fixed top-0 z-40 bg-dark-800 border-x border-b border-dark-500 p-3"
+                    className="fixed top-0 z-40 p-3 pt-6 -mt-3 border-b bg-dark-800 border-x border-dark-500"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex justify-between items-center">
                       {/* Items per page dropdown */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex gap-2 items-center">
                         <span className="text-xs text-gray-500">Show</span>
                         <select
                           value={itemsPerPage}
@@ -331,7 +331,7 @@ export function PlaylistBrowser({
                             const val = e.target.value;
                             handlePageSizeChange(val === 'all' ? 'all' : Number(val));
                           }}
-                          className="bg-dark-700 border border-dark-500 text-sm text-gray-300 px-2 py-1 rounded focus:outline-none focus:border-terminal-green"
+                          className="px-2 py-1 text-sm text-gray-300 rounded border bg-dark-700 border-dark-500 focus:outline-none focus:border-terminal-green"
                         >
                           {PAGE_SIZE_OPTIONS.map((size) => (
                             <option key={size} value={size}>
@@ -343,13 +343,13 @@ export function PlaylistBrowser({
                       </div>
 
                       {/* Page range info */}
-                      <div className="text-sm font-mono text-gray-400">
+                      <div className="font-mono text-sm text-gray-400">
                         {isShowingAll ? `${totalPlaylists} playlists` : `${startItem}-${endItem} of ${totalPlaylists}`}
                       </div>
 
                       {/* Page navigation - hidden when showing all */}
                       {!isShowingAll && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex gap-1 items-center">
                           <button
                             onClick={handlePrevPage}
                             disabled={currentPage === 0}
@@ -395,11 +395,11 @@ export function PlaylistBrowser({
 
               {/* Playlists Grid */}
               {isLoadingPlaylists ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-6 h-6 text-terminal-green animate-spin" />
+                <div className="flex justify-center items-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-terminal-green" />
                 </div>
               ) : playlistsData?.playlists && playlistsData.playlists.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   <AnimatePresence>
                     {playlistsData.playlists.map((playlist, index) => (
                       <PlaylistCard
@@ -414,7 +414,7 @@ export function PlaylistBrowser({
                   </AnimatePresence>
                 </div>
               ) : (
-                <div className="text-center py-12 text-gray-500">
+                <div className="py-12 text-center text-gray-500">
                   <p>No playlists found</p>
                 </div>
               )}
@@ -423,11 +423,11 @@ export function PlaylistBrowser({
               {playlistsData && totalPlaylists > 0 && (
                 <div
                   ref={bottomBarRef}
-                  className="bg-dark-800/95 backdrop-blur-sm border-t border-dark-500 p-3 mt-4 -mx-4 -mb-4"
+                  className="p-3 -mx-4 mt-4 -mb-4 border-t backdrop-blur-sm bg-dark-800/95 border-dark-500"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex justify-between items-center">
                     {/* Items per page dropdown */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex gap-2 items-center">
                       <span className="text-xs text-gray-500">Show</span>
                       <select
                         value={itemsPerPage}
@@ -435,7 +435,7 @@ export function PlaylistBrowser({
                           const val = e.target.value;
                           handlePageSizeChange(val === 'all' ? 'all' : Number(val));
                         }}
-                        className="bg-dark-700 border border-dark-500 text-sm text-gray-300 px-2 py-1 rounded focus:outline-none focus:border-terminal-green"
+                        className="px-2 py-1 text-sm text-gray-300 rounded border bg-dark-700 border-dark-500 focus:outline-none focus:border-terminal-green"
                       >
                         {PAGE_SIZE_OPTIONS.map((size) => (
                           <option key={size} value={size}>
@@ -447,13 +447,13 @@ export function PlaylistBrowser({
                     </div>
 
                     {/* Page range info */}
-                    <div className="text-sm font-mono text-gray-400">
+                    <div className="font-mono text-sm text-gray-400">
                       {isShowingAll ? `${totalPlaylists} playlists` : `${startItem}-${endItem} of ${totalPlaylists}`}
                     </div>
 
                     {/* Page navigation - hidden when showing all */}
                     {!isShowingAll && (
-                      <div className="flex items-center gap-1">
+                      <div className="flex gap-1 items-center">
                         <button
                           onClick={handlePrevPage}
                           disabled={currentPage === 0}

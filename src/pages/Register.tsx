@@ -57,7 +57,7 @@ export function Register() {
             </div>
           </div>
 
-          <div className="card-terminal text-center">
+          <div className="card-terminal p-6 text-center">
             <CheckCircle className="w-16 h-16 text-terminal-green mx-auto mb-6" />
             <h2 className="text-2xl font-bold text-terminal-green mb-4 font-mono">
               CHECK YOUR EMAIL
@@ -134,7 +134,7 @@ export function Register() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           onSubmit={handleSubmit}
-          className="card-terminal space-y-6"
+          className="card-terminal p-6 space-y-6"
         >
           <div>
             <label className="block text-sm font-mono text-terminal-green mb-2">

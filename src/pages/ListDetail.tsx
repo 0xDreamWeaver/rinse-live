@@ -2,11 +2,12 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, ArrowLeft, Calendar, FileText, Trash2, X, CheckSquare, Square, Play, Pause, MoreHorizontal, Pencil, RefreshCw, Music } from 'lucide-react';
+import { Download, ArrowLeft, Calendar, FileText, Trash2, X, CheckSquare, Square, Play, Pause, MoreHorizontal, Pencil, RefreshCw, RotateCcw } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore, useAudioPlayer } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { PlayingIndicator } from '../components/PlayingIndicator';
+import { CoverArt } from '../components/CoverArt';
 
 export function ListDetail() {
   const { id } = useParams<{ id: string }>();
@@ -99,9 +100,12 @@ export function ListDetail() {
     },
   });
 
+  const [skipExisting, setSkipExisting] = useState(true);
+
   // Mutation for refreshing metadata
   const refreshMetadataMutation = useMutation({
-    mutationFn: (ids: number[]) => api.batchRefreshMetadata(ids),
+    mutationFn: ({ ids, skipExisting: skip }: { ids: number[]; skipExisting: boolean }) =>
+      api.batchRefreshMetadata(ids, skip),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['list', id] });
       queryClient.invalidateQueries({ queryKey: ['items'] });
@@ -111,6 +115,18 @@ export function ListDetail() {
       if (failCount > 0) {
         alert(`Metadata refreshed for ${successCount} items. ${failCount} items failed (may be rate limited).`);
       }
+    },
+  });
+
+  // Mutation for retrying a failed item
+  const retryMutation = useMutation({
+    mutationFn: async ({ itemId, track, artist }: { itemId: number; track: string; artist?: string }) => {
+      await api.queueSearch(track, artist);
+      await api.deleteItem(itemId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['list', id] });
+      queryClient.invalidateQueries({ queryKey: ['items'] });
     },
   });
 
@@ -159,8 +175,8 @@ export function ListDetail() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="font-mono text-terminal-green animate-pulse">
+      <div className="flex justify-center items-center h-64">
+        <div className="font-mono animate-pulse text-terminal-green">
           LOADING...
         </div>
       </div>
@@ -169,7 +185,7 @@ export function ListDetail() {
 
   if (!data) {
     return (
-      <div className="card-terminal text-center py-12">
+      <div className="p-6 py-12 text-center card-terminal">
         <p className="font-mono text-red-500">List not found</p>
       </div>
     );
@@ -221,7 +237,7 @@ export function ListDetail() {
       }
     }
 
-    refreshMetadataMutation.mutate(completedIds);
+    refreshMetadataMutation.mutate({ ids: completedIds, skipExisting });
   };
 
   const getStatusColor = () => {
@@ -241,7 +257,7 @@ export function ListDetail() {
     <div className="space-y-6">
       {/* Back Button */}
       <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-        <Link to="/lists" className="inline-flex items-center gap-2 text-terminal-green hover:text-terminal-green-dark transition-colors font-mono">
+        <Link to="/lists" className="inline-flex gap-2 items-center font-mono transition-colors text-terminal-green hover:text-terminal-green-dark">
           <ArrowLeft className="w-4 h-4" />
           Back to Lists
         </Link>
@@ -254,16 +270,68 @@ export function ListDetail() {
         transition={{ delay: 0.1 }}
         className="space-y-4"
       >
-        <h1 className="text-4xl font-display font-bold text-terminal-green">
-          {list.name}
-        </h1>
+        <div className="flex justify-between items-center">
+          <h1 className="text-4xl font-bold font-display text-terminal-green">
+            {list.name}
+          </h1>
 
-        <div className="flex flex-wrap items-center gap-4 text-sm font-mono">
-          <div className="flex items-center gap-2 text-gray-400">
+          {selectedListItemIds.length > 0 && (
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex gap-2"
+            >
+              <div className="relative group">
+                <button
+                  onClick={handleRefreshMetadata}
+                  disabled={refreshMetadataMutation.isPending}
+                  className="flex relative z-10 gap-2 items-center btn-secondary"
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshMetadataMutation.isPending ? 'animate-spin' : ''}`} />
+                  Refresh Metadata
+                </button>
+                <div className="absolute left-0 right-0 top-full -mt-px z-0 bg-dark-700 border border-t-0 border-dark-500  transition-all duration-300 font-mono grid grid-rows-[0fr] group-hover:grid-rows-[1fr]">
+                  <div className="overflow-hidden">
+                    <button
+                      onClick={() => setSkipExisting(!skipExisting)}
+                      className="flex gap-1.5 items-center px-4 py-2 text-sm text-gray-400 hover:text-terminal-green transition-colors whitespace-nowrap w-full"
+                    >
+                      {skipExisting ? (
+                        <CheckSquare className="w-4 h-4 text-terminal-green" />
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                      Skip existing
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleBatchRemove}
+                disabled={removeFromListMutation.isPending}
+                className="flex gap-2 items-center btn-secondary"
+              >
+                <X className="w-4 h-4" />
+                Remove {selectedListItemIds.length} from list
+              </button>
+              <button
+                onClick={handleBatchDelete}
+                disabled={deleteItemsMutation.isPending}
+                className="flex gap-2 items-center btn-secondary"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete {selectedListItemIds.length}
+              </button>
+            </motion.div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-4 items-center font-mono text-sm">
+          <div className="flex gap-2 items-center text-gray-400">
             <Calendar className="w-4 h-4" />
             {new Date(list.created_at).toLocaleDateString()}
           </div>
-          <div className="flex items-center gap-2 text-gray-400">
+          <div className="flex gap-2 items-center text-gray-400">
             <FileText className="w-4 h-4" />
             {list.total_items} items
           </div>
@@ -287,11 +355,11 @@ export function ListDetail() {
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="absolute right-0 mt-2 w-56 bg-dark-800 border border-dark-500 shadow-lg z-50"
+                  className="absolute right-0 z-50 mt-2 w-56 border shadow-lg bg-dark-800 border-dark-500"
                 >
                   <button
                     onClick={handleRename}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-300 hover:bg-dark-700 hover:text-terminal-green transition-colors"
+                    className="flex gap-3 items-center px-4 py-3 w-full text-left text-gray-300 transition-colors hover:bg-dark-700 hover:text-terminal-green"
                   >
                     <Pencil className="w-4 h-4" />
                     Rename
@@ -300,7 +368,7 @@ export function ListDetail() {
                   <button
                     onClick={handleDeleteListAndItems}
                     disabled={deleteListWithItemsMutation.isPending}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-400 hover:bg-dark-700 hover:text-red-300 transition-colors disabled:opacity-50"
+                    className="flex gap-3 items-center px-4 py-3 w-full text-left text-red-400 transition-colors hover:bg-dark-700 hover:text-red-300 disabled:opacity-50"
                   >
                     <Trash2 className="w-4 h-4" />
                     Delete List and Items
@@ -308,7 +376,7 @@ export function ListDetail() {
                   <button
                     onClick={handleDeleteListKeepItems}
                     disabled={deleteListMutation.isPending}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-orange-400 hover:bg-dark-700 hover:text-orange-300 transition-colors disabled:opacity-50"
+                    className="flex gap-3 items-center px-4 py-3 w-full text-left text-orange-400 transition-colors hover:bg-dark-700 hover:text-orange-300 disabled:opacity-50"
                   >
                     <X className="w-4 h-4" />
                     Delete List, Keep Items
@@ -319,73 +387,62 @@ export function ListDetail() {
           </div>
         </div>
 
-        {/* Progress Bar */}
-        {(list.status === 'downloading' || list.status === 'partial') && (
+        {/* Progress Bar - downloading state */}
+        {list.status === 'downloading' && (
           <div className="space-y-1">
-            <div className="h-3 bg-dark-700 border border-dark-500 overflow-hidden">
+            <div className="overflow-hidden h-3 border bg-dark-700 border-dark-500">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${progress}%` }}
                 className="h-full bg-terminal-green"
               />
             </div>
-            <div className="text-sm font-mono text-gray-500">
+            <div className="font-mono text-sm text-gray-500">
               {list.completed_items}/{list.total_items} completed ({progress.toFixed(0)}%)
               {list.failed_items > 0 && (
-                <span className="text-red-500 ml-2">({list.failed_items} failed)</span>
+                <span className="ml-2 text-red-500">({list.failed_items} failed)</span>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Completion summary - partial state */}
+        {list.status === 'partial' && (
+          <div className="space-y-1">
+            <div className="flex overflow-hidden h-3 border bg-dark-700 border-dark-500">
+              <div
+                style={{ width: `${(list.completed_items / list.total_items) * 100}%` }}
+                className="h-full bg-terminal-green"
+              />
+              <div
+                style={{ width: `${(list.failed_items / list.total_items) * 100}%` }}
+                className="h-full bg-red-500/60"
+              />
+            </div>
+            <div className="font-mono text-sm text-gray-500">
+              <span className="text-terminal-green">{list.completed_items} completed</span>
+              <span className="mx-2">·</span>
+              <span className="text-red-500">{list.failed_items} failed</span>
+              <span className="mx-2">·</span>
+              {list.total_items} total
             </div>
           </div>
         )}
       </motion.div>
 
       {/* Download Button */}
-      {list.status === 'completed' && (
+      {(list.status === 'completed' || list.status === 'partial') && list.completed_items > 0 && (
         <motion.a
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           href={api.getListDownloadUrl(list.id)}
           download
-          className="btn-primary w-full flex items-center justify-center gap-2"
+          className="flex gap-2 justify-center items-center w-full btn-primary"
         >
           <Download className="w-5 h-5" />
-          DOWNLOAD ZIP ({list.total_items} files)
+          DOWNLOAD ZIP ({list.completed_items} {list.completed_items === 1 ? 'file' : 'files'})
         </motion.a>
-      )}
-
-      {/* Batch Action Buttons */}
-      {selectedListItemIds.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex gap-3"
-        >
-          <button
-            onClick={handleRefreshMetadata}
-            disabled={refreshMetadataMutation.isPending}
-            className="flex gap-2 items-center btn-secondary"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshMetadataMutation.isPending ? 'animate-spin' : ''}`} />
-            Refresh Metadata
-          </button>
-          <button
-            onClick={handleBatchRemove}
-            disabled={removeFromListMutation.isPending}
-            className="flex gap-2 items-center btn-secondary"
-          >
-            <X className="w-4 h-4" />
-            Remove {selectedListItemIds.length} from list
-          </button>
-          <button
-            onClick={handleBatchDelete}
-            disabled={deleteItemsMutation.isPending}
-            className="flex gap-2 items-center btn-secondary text-red-500 hover:text-red-400"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete {selectedListItemIds.length}
-          </button>
-        </motion.div>
       )}
 
       {/* Items Table */}
@@ -393,12 +450,12 @@ export function ListDetail() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="card-terminal overflow-x-auto"
+        className="overflow-x-auto card-terminal"
       >
         <table className="w-full">
           <thead>
             <tr className="border-b border-dark-500">
-              <th className="text-left px-4 py-3 font-mono text-terminal-green text-sm">
+              <th className="px-4 py-3 font-mono text-sm text-left text-terminal-green">
                 <button
                   onClick={handleSelectAll}
                   className="transition-colors text-terminal-green hover:text-terminal-green-dark"
@@ -410,19 +467,22 @@ export function ListDetail() {
                   )}
                 </button>
               </th>
-              <th className="text-left px-4 py-3 font-mono text-terminal-green text-sm">
+              <th className="px-4 py-3 font-mono text-sm text-left text-terminal-green">
                 #
               </th>
-              <th className="text-left px-4 py-3 font-mono text-terminal-green text-sm">
+              <th className="px-4 py-3 font-mono text-sm text-left text-terminal-green">
                 Track
               </th>
-              <th className="text-left px-4 py-3 font-mono text-terminal-green text-sm">
+              <th className="px-4 py-3 font-mono text-sm text-left text-terminal-green">
                 BPM
               </th>
-              <th className="text-left px-4 py-3 font-mono text-terminal-green text-sm">
+              <th className="px-4 py-3 font-mono text-sm text-left text-terminal-green">
+                Quality
+              </th>
+              <th className="px-4 py-3 font-mono text-sm text-left text-terminal-green">
                 Status
               </th>
-              <th className="text-left px-4 py-3 font-mono text-terminal-green text-sm">
+              <th className="px-4 py-3 font-mono text-sm text-left text-terminal-green">
                 Actions
               </th>
             </tr>
@@ -430,6 +490,8 @@ export function ListDetail() {
           <tbody>
             {items.map((item, index) => {
               const isDeleted = item.download_status === 'deleted';
+              const isFailed = item.download_status === 'failed';
+              const isDimmed = isDeleted || isFailed;
               const isSelected = selectedListItemIds.includes(item.id);
               const isCurrentTrack = currentTrack?.id === item.id;
               const isThisPlaying = isCurrentTrack && isPlaying;
@@ -455,7 +517,7 @@ export function ListDetail() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.4 + index * 0.05 }}
                   className={`border-b border-dark-600 transition-colors ${
-                    isDeleted ? 'opacity-50' : 'hover:bg-dark-700'
+                    isDimmed ? 'opacity-40' : 'hover:bg-dark-700'
                   } ${isSelected ? 'bg-dark-700' : ''}`}
                 >
                   <td className="px-4 py-3 text-sm">
@@ -472,25 +534,21 @@ export function ListDetail() {
                       </button>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-sm font-mono text-gray-500">
+                  <td className="px-4 py-3 font-mono text-sm text-gray-500">
                     {index + 1}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <div className="flex items-center gap-3">
+                    <div className="flex gap-3 items-center">
                       {/* Cover Art / Play Button */}
-                      <div className={`relative flex-shrink-0 w-10 h-10 group ${isDeleted ? 'opacity-50' : ''}`}>
-                        {albumArt ? (
-                          <img
-                            src={albumArt}
-                            alt={title}
-                            className="object-cover w-full h-full rounded"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="flex items-center justify-center w-full h-full rounded bg-dark-600">
-                            <Music className="w-4 h-4 text-gray-500" />
-                          </div>
-                        )}
+                      <div className={`relative flex-shrink-0 w-10 h-10 group ${isDimmed ? 'opacity-50' : ''}`}>
+                        <CoverArt
+                          itemId={item.id}
+                          albumArtUrl={albumArt}
+                          size="thumb"
+                          alt={title}
+                          className="w-full h-full"
+                          iconClassName="w-4 h-4 text-gray-500"
+                        />
                         {/* Playing indicator (behind play button) */}
                         {isThisPlaying && (
                           <PlayingIndicator size="sm" />
@@ -513,7 +571,7 @@ export function ListDetail() {
                                 }
                               }
                             }}
-                            className="absolute inset-0 z-10 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
+                            className="flex absolute inset-0 z-10 justify-center items-center rounded opacity-0 transition-opacity bg-black/60 group-hover:opacity-100"
                           >
                             {isThisPlaying ? (
                               <Pause className="w-4 h-4 text-terminal-green" />
@@ -526,8 +584,8 @@ export function ListDetail() {
 
                       {/* Title / Artist */}
                       <div className="flex flex-col min-w-0">
-                        {isDeleted ? (
-                          <span className="truncate text-gray-500 line-through" title={title}>
+                        {isDimmed ? (
+                          <span className={`truncate ${isDeleted ? 'text-gray-500 line-through' : 'text-gray-500'}`} title={title}>
                             {title}
                           </span>
                         ) : (
@@ -540,19 +598,32 @@ export function ListDetail() {
                           </Link>
                         )}
                         {artist ? (
-                          <span className={`text-xs truncate ${isDeleted ? 'text-gray-600' : 'text-gray-400'}`} title={artist}>
+                          <span className={`text-xs truncate ${isDimmed ? 'text-gray-600' : 'text-gray-400'}`} title={artist}>
                             {artist}
                           </span>
                         ) : (
-                          <span className={`text-xs truncate italic ${isDeleted ? 'text-gray-600' : 'text-gray-500'}`}>
+                          <span className={`text-xs truncate italic ${isDimmed ? 'text-gray-600' : 'text-gray-500'}`}>
                             Unknown Artist
                           </span>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className={`px-4 py-3 text-sm font-mono ${isDeleted ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <td className={`px-4 py-3 text-sm font-mono ${isDimmed ? 'text-gray-600' : 'text-gray-400'}`}>
                     {item.meta_bpm || '-'}
+                  </td>
+                  <td className={`px-4 py-3 text-sm font-mono ${isDimmed ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {(() => {
+                      const ext = item.extension?.toUpperCase();
+                      const lossless = ['FLAC', 'WAV', 'AIFF'].includes(ext);
+                      if (lossless) {
+                        if (item.bit_depth && item.sample_rate) {
+                          return `${item.bit_depth}/${(item.sample_rate / 1000).toFixed(1)}kHz`;
+                        }
+                        return ext;
+                      }
+                      return item.bitrate ? `${item.bitrate} kbps` : ext || '-';
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <span
@@ -576,6 +647,20 @@ export function ListDetail() {
                             <Download className="w-3 h-3" />
                           </a>
                         )}
+                        {item.download_status === 'failed' && (
+                          <button
+                            onClick={() => {
+                              const track = item.original_track || item.original_query;
+                              const artist = item.original_artist || undefined;
+                              retryMutation.mutate({ itemId: item.id, track, artist });
+                            }}
+                            disabled={retryMutation.isPending}
+                            className="px-2 py-1 text-xs btn-secondary"
+                            title="Retry download"
+                          >
+                            <RotateCcw className={`w-3 h-3 ${retryMutation.isPending ? 'animate-spin' : ''}`} />
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             if (confirm('Remove this item from the list?')) {
@@ -593,7 +678,7 @@ export function ListDetail() {
                               deleteItemsMutation.mutate([item.id]);
                             }
                           }}
-                          className="px-2 py-1 text-xs btn-secondary text-red-500 hover:text-red-400"
+                          className="px-2 py-1 text-xs text-red-500 btn-secondary hover:text-red-400"
                           title="Delete item"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -608,7 +693,7 @@ export function ListDetail() {
         </table>
 
         {items.length === 0 && (
-          <div className="text-center py-12 text-gray-500 font-mono">
+          <div className="py-12 font-mono text-center text-gray-500">
             No items in this list
           </div>
         )}
@@ -621,17 +706,17 @@ export function ListDetail() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+            className="flex fixed inset-0 z-50 justify-center items-center bg-black/70"
             onClick={() => setShowRenameModal(false)}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-dark-800 border border-dark-500 p-6 w-full max-w-md"
+              className="p-6 w-full max-w-md border bg-dark-800 border-dark-500"
               onClick={(e) => e.stopPropagation()}
             >
-              <h2 className="text-xl font-display font-bold text-terminal-green mb-4">
+              <h2 className="mb-4 text-xl font-bold font-display text-terminal-green">
                 Rename List
               </h2>
               <input
@@ -639,21 +724,21 @@ export function ListDetail() {
                 value={newListName}
                 onChange={(e) => setNewListName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submitRename()}
-                className="w-full px-4 py-3 bg-dark-900 border border-dark-500 text-white font-mono focus:border-terminal-green focus:outline-none"
+                className="px-4 py-3 w-full font-mono text-white border bg-dark-900 border-dark-500 focus:border-terminal-green focus:outline-none"
                 placeholder="Enter new name..."
                 autoFocus
               />
               <div className="flex gap-3 mt-4">
                 <button
                   onClick={() => setShowRenameModal(false)}
-                  className="flex-1 px-4 py-2 text-gray-400 border border-gray-600 hover:border-gray-400 transition-colors font-mono"
+                  className="flex-1 px-4 py-2 font-mono text-gray-400 border border-gray-600 transition-colors hover:border-gray-400"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={submitRename}
                   disabled={!newListName.trim() || newListName === data?.name || renameListMutation.isPending}
-                  className="flex-1 px-4 py-2 bg-terminal-green text-dark-900 font-mono font-bold hover:bg-terminal-green-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2 font-mono font-bold transition-colors bg-terminal-green text-dark-900 hover:bg-terminal-green-dark disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {renameListMutation.isPending ? 'Saving...' : 'Save'}
                 </button>

@@ -35,20 +35,20 @@ export function PlaylistCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="border border-dark-500 bg-dark-800/50 hover:border-dark-400 transition-colors group"
+      className="relative border transition-colors border-dark-500 bg-dark-800/50 hover:border-dark-400 group"
     >
       <div className="flex gap-4 p-4">
         {/* Cover Art */}
-        <div className="w-20 h-20 flex-shrink-0 bg-dark-700 border border-dark-600">
+        <div className="flex-shrink-0 w-20 h-20 border bg-dark-700 border-dark-600">
           {playlist.image_url ? (
             <img
               src={playlist.image_url}
               alt={playlist.name}
-              className="w-full h-full object-cover"
+              className="object-cover w-full h-full"
               loading="lazy"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
+            <div className="flex justify-center items-center w-full h-full">
               <Music className="w-8 h-8 text-gray-600" />
             </div>
           )}
@@ -56,38 +56,38 @@ export function PlaylistCard({
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <h3 className="font-display font-bold text-terminal-green truncate">
+          <h3 className="font-bold truncate font-display text-terminal-green">
             {playlist.name}
           </h3>
 
           {playlist.description && (
-            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+            <p className="mt-1 text-xs text-gray-500 line-clamp-2">
               {playlist.description}
             </p>
           )}
 
-          <div className="flex items-center gap-4 mt-2 text-xs font-mono text-gray-400">
-            <span className="flex items-center gap-1">
+          <div className="flex gap-4 items-center mt-2 font-mono text-xs text-gray-400">
+            <span className="flex gap-1 items-center">
               <Music className="w-3 h-3" />
               {playlist.track_count} tracks
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex gap-1 items-center">
               <Clock className="w-3 h-3" />
               {formatEstimatedDuration(playlist.track_count)}
             </span>
           </div>
 
           {/* Owner */}
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="mt-1 text-xs text-gray-500">
             by {playlist.owner_name}
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex flex-col gap-2 shrink-0">
+        <div className="flex absolute right-0 bottom-0 flex-row p-2 shrink-0">
           <button
             onClick={onView}
-            className="btn-terminal-sm flex items-center gap-1.5 text-xs"
+            className="px-2 py-1 btn-terminal-sm flex items-center gap-1.5 text-xs hover:bg-white/5"
           >
             <Eye className="w-3.5 h-3.5" />
             View
@@ -95,7 +95,7 @@ export function PlaylistCard({
           <button
             onClick={onImport}
             disabled={isImporting}
-            className="btn-terminal-sm flex items-center gap-1.5 text-xs bg-terminal-green/10 border-terminal-green text-terminal-green hover:bg-terminal-green/20"
+            className="px-2 py-1 btn-terminal-sm flex items-center gap-1.5 text-xs bg-terminal-green/10 border-terminal-green text-terminal-green hover:bg-terminal-green/20"
           >
             {isImporting ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />

@@ -67,7 +67,7 @@ export function About() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="card-terminal"
+        className="card-terminal p-6"
       >
         <div className="flex items-start gap-4">
           <div className="w-16 h-16 border-2 border-terminal-green flex items-center justify-center terminal-box-glow flex-shrink-0">
@@ -122,7 +122,7 @@ export function About() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3 + index * 0.1 }}
-              className="card-terminal hover:border-terminal-green transition-colors group"
+              className="card-terminal p-6 hover:border-terminal-green transition-colors group"
             >
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 border border-dark-500 flex items-center justify-center group-hover:border-terminal-green transition-colors">
@@ -155,7 +155,7 @@ export function About() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.6 }}
-        className="card-terminal"
+        className="card-terminal p-6"
       >
         <h3 className="text-lg font-display font-bold text-terminal-green mb-4">
           Technical Details

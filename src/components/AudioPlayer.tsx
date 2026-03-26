@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, X, SkipBack, SkipForward, Shuffle, Repeat, Repeat1 } from 'lucide-react';
 import WaveSurfer from 'wavesurfer.js';
-import { useAudioPlayer, useFrequencyData } from '../store';
+import { useAppStore, useAudioPlayer } from '../store';
 import { api } from '../lib/api';
 
 function formatTime(seconds: number): string {
@@ -30,8 +30,10 @@ export function AudioPlayer() {
     queueIndex,
   } = useAudioPlayer();
 
-  // Get setFrequencyData from the targeted frequency hook
-  const { setFrequencyData } = useFrequencyData();
+  // Select ONLY the setter — do NOT subscribe to frequencyData itself.
+  // useFrequencyData() would subscribe to frequencyData (changes 60fps),
+  // causing AudioPlayer to re-render every frame and blocking page transitions.
+  const setFrequencyData = useAppStore((state) => state.setFrequencyData);
 
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
@@ -50,6 +52,7 @@ export function AudioPlayer() {
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const connectedElementRef = useRef<HTMLMediaElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const lastTimeUpdateRef = useRef(0);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -283,7 +286,11 @@ export function AudioPlayer() {
     });
 
     wavesurfer.on('audioprocess', () => {
-      setCurrentTime(wavesurfer.getCurrentTime());
+      const now = performance.now();
+      if (now - lastTimeUpdateRef.current >= 250) {
+        lastTimeUpdateRef.current = now;
+        setCurrentTime(wavesurfer.getCurrentTime());
+      }
     });
 
     wavesurfer.on('seeking', () => {

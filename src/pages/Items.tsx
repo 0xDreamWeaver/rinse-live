@@ -9,12 +9,13 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table';
 import { motion } from 'framer-motion';
-import { Download, Trash2, Search, CheckSquare, Square, Loader2, Play, Pause, RotateCcw, RefreshCw, Music } from 'lucide-react';
+import { Download, Trash2, Search, CheckSquare, Square, Loader2, Play, Pause, RotateCcw, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore, useAudioPlayer } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { Link } from 'react-router-dom';
 import { PlayingIndicator } from '../components/PlayingIndicator';
+import { CoverArt } from '../components/CoverArt';
 import type { Item } from '../types';
 
 const columnHelper = createColumnHelper<Item>();
@@ -56,7 +57,7 @@ export function Items() {
   const [globalFilter, setGlobalFilter] = useState('');
   const queryClient = useQueryClient();
 
-  const { selectedItemIds, toggleItemSelection, clearItemSelection, itemsNeedRefresh, setItemsNeedRefresh, activeDownloads, progressUpdates } =
+  const { selectedItemIds, toggleItemSelection, clearItemSelection, itemsNeedRefresh, setItemsNeedRefresh } =
     useAppStore(
       useShallow((state) => ({
         selectedItemIds: state.selectedItemIds,
@@ -64,8 +65,6 @@ export function Items() {
         clearItemSelection: state.clearItemSelection,
         itemsNeedRefresh: state.itemsNeedRefresh,
         setItemsNeedRefresh: state.setItemsNeedRefresh,
-        activeDownloads: state.activeDownloads,
-        progressUpdates: state.progressUpdates,
       }))
     );
   const { currentTrack, isPlaying, playTrackFromQueue, pausePlayback } = useAudioPlayer();
@@ -84,7 +83,9 @@ export function Items() {
   }, [itemsNeedRefresh, queryClient, setItemsNeedRefresh]);
 
   // Get progress for a specific item from WebSocket updates
+  // Read Maps on-demand via getState() to avoid subscribing to frequent Map reference changes
   const getItemProgress = (itemId: number) => {
+    const { activeDownloads, progressUpdates } = useAppStore.getState();
     // activeDownloads is keyed by clientId (string), so we need to find by itemId
     for (const download of activeDownloads.values()) {
       if (download.itemId === itemId && download.stage === 'downloading') {
@@ -118,8 +119,11 @@ export function Items() {
     },
   });
 
+  const [skipExisting, setSkipExisting] = useState(true);
+
   const refreshMetadataMutation = useMutation({
-    mutationFn: (ids: number[]) => api.batchRefreshMetadata(ids),
+    mutationFn: ({ ids, skipExisting: skip }: { ids: number[]; skipExisting: boolean }) =>
+      api.batchRefreshMetadata(ids, skip),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['items'] });
       clearItemSelection();
@@ -186,21 +190,15 @@ export function Items() {
           const albumArt = item.meta_album_art_url;
 
           return (
-            <div className="flex items-center gap-3">
+            <div className="flex gap-3 items-center">
               {/* Cover Art / Play Button */}
               <div className="relative flex-shrink-0 w-12 h-12 group">
-                {albumArt ? (
-                  <img
-                    src={albumArt}
-                    alt={title}
-                    className="object-cover w-full h-full rounded"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center w-full h-full rounded bg-dark-600">
-                    <Music className="w-5 h-5 text-gray-500" />
-                  </div>
-                )}
+                <CoverArt
+                  itemId={item.id}
+                  albumArtUrl={albumArt}
+                  size="thumb"
+                  alt={title}
+                />
                 {/* Playing indicator (behind play button) */}
                 {isThisPlaying && (
                   <PlayingIndicator />
@@ -221,7 +219,7 @@ export function Items() {
                         }
                       }
                     }}
-                    className="absolute inset-0 z-10 flex items-center justify-center transition-opacity bg-black/60 opacity-0 group-hover:opacity-100 rounded"
+                    className="flex absolute inset-0 z-10 justify-center items-center rounded opacity-0 transition-opacity bg-black/60 group-hover:opacity-100"
                   >
                     {isThisPlaying ? (
                       <Pause className="w-5 h-5 text-terminal-green" />
@@ -242,11 +240,11 @@ export function Items() {
                   <HighlightMatch text={title} searchTerm={globalFilter} />
                 </Link>
                 {artist ? (
-                  <span className="text-sm truncate text-gray-400" title={artist}>
+                  <span className="text-sm text-gray-400 truncate" title={artist}>
                     <HighlightMatch text={artist} searchTerm={globalFilter} />
                   </span>
                 ) : (
-                  <span className="text-sm truncate text-gray-500 italic">
+                  <span className="text-sm italic text-gray-500 truncate">
                     Unknown Artist
                   </span>
                 )}
@@ -262,6 +260,30 @@ export function Items() {
           return (
             <span className="font-mono text-gray-400">
               {bpm || '-'}
+            </span>
+          );
+        },
+      }),
+      columnHelper.display({
+        id: 'quality',
+        header: 'Quality',
+        cell: ({ row }) => {
+          const item = row.original;
+          const ext = item.extension?.toUpperCase();
+          const lossless = ['FLAC', 'WAV', 'AIFF'].includes(ext);
+          let quality = '-';
+          if (lossless) {
+            if (item.bit_depth && item.sample_rate) {
+              quality = `${item.bit_depth}/${(item.sample_rate / 1000).toFixed(1)}kHz`;
+            } else {
+              quality = ext;
+            }
+          } else {
+            quality = item.bitrate ? `${item.bitrate} kbps` : ext || '-';
+          }
+          return (
+            <span className="font-mono text-gray-400">
+              {quality}
             </span>
           );
         },
@@ -377,7 +399,7 @@ export function Items() {
       }
     }
 
-    refreshMetadataMutation.mutate(completedIds);
+    refreshMetadataMutation.mutate({ ids: completedIds, skipExisting });
   };
 
   if (isLoading) {
@@ -422,14 +444,31 @@ export function Items() {
             animate={{ scale: 1, opacity: 1 }}
             className="flex gap-2"
           >
-            <button
-              onClick={handleRefreshMetadata}
-              disabled={refreshMetadataMutation.isPending}
-              className="flex gap-2 items-center btn-secondary"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshMetadataMutation.isPending ? 'animate-spin' : ''}`} />
-              Refresh Metadata
-            </button>
+            <div className="relative group">
+              <button
+                onClick={handleRefreshMetadata}
+                disabled={refreshMetadataMutation.isPending}
+                className="flex relative z-10 gap-2 items-center btn-secondary"
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshMetadataMutation.isPending ? 'animate-spin' : ''}`} />
+                Refresh Metadata
+              </button>
+              <div className="absolute left-0 right-0 top-full -mt-px z-0 bg-dark-700 border border-t-0 border-dark-500  transition-all duration-300 font-mono grid grid-rows-[0fr] group-hover:grid-rows-[1fr]">
+                <div className="overflow-hidden">
+                  <button
+                    onClick={() => setSkipExisting(!skipExisting)}
+                    className="flex gap-1.5 items-center px-4 py-2 text-sm text-gray-400 hover:text-terminal-green transition-colors whitespace-nowrap w-full"
+                  >
+                    {skipExisting ? (
+                      <CheckSquare className="w-4 h-4 text-terminal-green" />
+                    ) : (
+                      <Square className="w-4 h-4" />
+                    )}
+                    Skip existing
+                  </button>
+                </div>
+              </div>
+            </div>
             <button
               onClick={handleBatchDelete}
               disabled={deleteMutation.isPending}

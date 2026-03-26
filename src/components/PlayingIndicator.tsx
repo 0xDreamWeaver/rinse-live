@@ -1,7 +1,7 @@
 import { useFrequencyData } from '../store';
 
 interface PlayingIndicatorProps {
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
 }
 
 /**
@@ -17,8 +17,9 @@ export function PlayingIndicator({ size = 'md' }: PlayingIndicatorProps) {
 
   // Size configurations
   const sizeConfig = {
-    sm: { container: 'h-3', bar: 'w-0.5' },
-    md: { container: 'h-4', bar: 'w-1' },
+    sm: { container: 'h-3', bar: 'w-0.5', gap: 'gap-0.5' },
+    md: { container: 'h-4', bar: 'w-1', gap: 'gap-0.5' },
+    lg: { container: 'h-10', bar: 'w-2', gap: 'gap-1' },
   };
 
   const config = sizeConfig[size];
@@ -47,7 +48,7 @@ export function PlayingIndicator({ size = 'md' }: PlayingIndicatorProps) {
 
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded pointer-events-none">
-      <div className={`flex gap-0.5 items-end ${config.container}`}>
+      <div className={`flex ${config.gap} items-end ${config.container}`}>
         {bars.map((bar, index) => (
           <span
             key={index}

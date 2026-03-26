@@ -1,9 +1,11 @@
 import type {
-  Item, List, ListWithItems, User,
+  Item, List, ListWithItems, User, UpdateProfileRequest,
   EnqueueSearchResponse, EnqueueListResponse, QueueStatusResponse, QueueItemsResponse,
   TrackMetadata, MetadataRefreshResponse, MetadataJobResponse, MetadataJobStatusResponse,
   ListTrackRequest,
-  MusicService, OAuthConnectionStatus, OAuthConnectResponse, OAuthCallbackResponse, PlaylistsResponse, PlaylistTracksResponse
+  MusicService, OAuthConnectionStatus, OAuthConnectResponse, OAuthCallbackResponse, PlaylistsResponse, PlaylistTracksResponse,
+  UploadStats, UploadConfigRequest, UploadConfigResponse, UploadsListResponse, SharingStats,
+  SystemStats, AdminUser, CoverBackfillStatusResponse
 } from '../types';
 import { useAppStore } from '../store';
 
@@ -162,6 +164,10 @@ class ApiClient {
     return token ? `${url}?token=${token}` : url;
   }
 
+  getItemCoverUrl(id: number, size: 'thumb' | 'full' = 'thumb'): string {
+    return `${this.baseUrl}/api/items/${id}/cover?size=${size}`;
+  }
+
   getItemStreamUrl(id: number): string {
     // Same as download URL - the backend now serves with inline disposition for playback
     const token = useAppStore.getState().token;
@@ -266,6 +272,51 @@ class ApiClient {
     return this.request(`/api/queue/history?limit=${limit}&offset=${offset}`);
   }
 
+  // Profile
+  async updateProfile(data: UpdateProfileRequest): Promise<User> {
+    return this.request('/api/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async uploadAvatar(file: File): Promise<User> {
+    const token = useAppStore.getState().token;
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const response = await fetch(`${this.baseUrl}/api/profile/avatar`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (response.status === 401) {
+      useAppStore.getState().clearAuth();
+      throw new Error('Session expired. Please log in again.');
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(error.error || 'Upload failed');
+    }
+
+    return response.json();
+  }
+
+  async deleteAvatar(): Promise<User> {
+    return this.request('/api/profile/avatar', {
+      method: 'DELETE',
+    });
+  }
+
+  getAvatarUrl(): string {
+    const token = useAppStore.getState().token;
+    return `${this.baseUrl}/api/profile/avatar?token=${token}`;
+  }
+
   // WebSocket
   getWebSocketUrl(): string {
     const token = useAppStore.getState().token;
@@ -288,8 +339,9 @@ class ApiClient {
     return this.request(`/api/items/${id}/metadata`);
   }
 
-  async refreshItemMetadata(id: number): Promise<MetadataRefreshResponse> {
-    return this.request(`/api/items/${id}/metadata/refresh`, {
+  async refreshItemMetadata(id: number, skipExisting?: boolean): Promise<MetadataRefreshResponse> {
+    const params = skipExisting ? '?skip_existing=true' : '';
+    return this.request(`/api/items/${id}/metadata/refresh${params}`, {
       method: 'POST',
     });
   }
@@ -300,7 +352,7 @@ class ApiClient {
     });
   }
 
-  async batchRefreshMetadata(ids: number[]): Promise<{ results: Array<{ id: number; success: boolean; error?: string }> }> {
+  async batchRefreshMetadata(ids: number[], skipExisting?: boolean): Promise<{ results: Array<{ id: number; success: boolean; error?: string }> }> {
     // The backend doesn't have a batch endpoint, so we call single refresh for each
     // We run them in parallel but with a small delay to avoid overwhelming the server
     const results: Array<{ id: number; success: boolean; error?: string }> = [];
@@ -312,7 +364,7 @@ class ApiClient {
       const batchResults = await Promise.all(
         batch.map(async (id) => {
           try {
-            await this.refreshItemMetadata(id);
+            await this.refreshItemMetadata(id, skipExisting);
             return { id, success: true };
           } catch (error) {
             return {
@@ -376,6 +428,62 @@ class ApiClient {
 
   async getPlaylistTracks(service: MusicService, playlistId: string, limit: number = 100, offset: number = 0): Promise<PlaylistTracksResponse> {
     return this.request(`/api/oauth/${service}/playlists/${encodeURIComponent(playlistId)}/tracks?limit=${limit}&offset=${offset}`);
+  }
+
+  // Uploads & Sharing
+  async getUploadStatus(): Promise<UploadStats> {
+    return this.request('/api/uploads');
+  }
+
+  async getUploadConfig(): Promise<UploadConfigResponse> {
+    return this.request('/api/uploads/config');
+  }
+
+  async updateUploadConfig(config: UploadConfigRequest): Promise<UploadConfigResponse> {
+    return this.request('/api/uploads/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+  }
+
+  async getActiveUploads(): Promise<UploadsListResponse> {
+    return this.request('/api/uploads/active');
+  }
+
+  async getSharingStats(): Promise<SharingStats> {
+    return this.request('/api/sharing/stats');
+  }
+
+  async rescanShares(): Promise<SharingStats> {
+    return this.request('/api/sharing/rescan', {
+      method: 'POST',
+    });
+  }
+
+  // Admin
+  async getSystemStats(): Promise<SystemStats> {
+    return this.request('/api/admin/stats');
+  }
+
+  async getAdminUsers(): Promise<AdminUser[]> {
+    return this.request('/api/admin/users');
+  }
+
+  async updateUserRole(userId: number, role: string): Promise<void> {
+    return this.request(`/api/admin/users/${userId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async startCoverBackfill(): Promise<{ message: string; total_items: number }> {
+    return this.request('/api/covers/backfill', {
+      method: 'POST',
+    });
+  }
+
+  async getCoverBackfillStatus(): Promise<CoverBackfillStatusResponse> {
+    return this.request('/api/covers/backfill');
   }
 }
 

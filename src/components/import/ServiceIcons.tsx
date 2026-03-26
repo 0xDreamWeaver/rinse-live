@@ -54,7 +54,8 @@ export function BeatportIcon({ className = '', size = 24 }: IconProps) {
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 22 28"
       width={size}
-      height={size * (28 / 22)}
+      height={size}
+      // height={size * (28 / 22)}
       className={className}
       fill="currentColor"
     >

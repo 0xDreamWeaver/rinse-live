@@ -15,6 +15,7 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { About } from './pages/About';
+import { Admin } from './pages/Admin';
 import { SearchHistory } from './pages/SearchHistory';
 import { OAuthCallback } from './pages/OAuthCallback';
 import { useAuth } from './store';
@@ -104,9 +105,7 @@ function App() {
               <Route path="lists/:id" element={<ListDetail />} />
               <Route path="history" element={<SearchHistory />} />
               <Route path="profile" element={<Profile />} />
-            </Route>
-            {/* Unprotected routes */}
-            <Route path="/" element={<Layout />}>
+              <Route path="admin" element={<Admin />} />
               <Route path="about" element={<About />} />
             </Route>
           </Routes>

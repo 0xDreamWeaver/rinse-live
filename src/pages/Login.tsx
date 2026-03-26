@@ -75,7 +75,7 @@ export function Login() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           onSubmit={handleSubmit}
-          className="space-y-6 card-terminal"
+          className="space-y-6 card-terminal p-6"
         >
           <div>
             <label className="block mb-2 font-mono text-sm text-terminal-green">

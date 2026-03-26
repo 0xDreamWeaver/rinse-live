@@ -54,7 +54,7 @@ export function VerifyEmail() {
           </div>
         </motion.div>
 
-        <div className="card-terminal text-center">
+        <div className="card-terminal p-6 text-center">
           {status === 'loading' && (
             <>
               <Loader className="w-16 h-16 text-terminal-green mx-auto mb-6 animate-spin" />

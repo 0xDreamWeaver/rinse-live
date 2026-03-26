@@ -1,8 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, CheckCircle2, XCircle, Clock, Download, X, ChevronUp, ChevronDown } from 'lucide-react';
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Download,
+  X,
+  ListMusic,
+} from 'lucide-react';
 import { api } from '../lib/api';
-import { useAppStore, useAudioPlayer } from '../store';
+import { useAppStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import type { ActiveDownload } from '../types';
 
 function getStageInfo(download: ActiveDownload) {
@@ -16,7 +25,6 @@ function getStageInfo(download: ActiveDownload) {
           ? `${download.resultsCount} files from ${download.usersCount || 0} users`
           : 'Querying network...',
         color: 'text-blue-400',
-        borderColor: 'border-blue-500/50',
         bgColor: 'bg-blue-500/10',
         canDismiss: false,
       };
@@ -27,7 +35,6 @@ function getStageInfo(download: ActiveDownload) {
         subtitle: download.query,
         detail: 'Executing search...',
         color: 'text-purple-400',
-        borderColor: 'border-purple-500/50',
         bgColor: 'bg-purple-500/10',
         canDismiss: false,
       };
@@ -40,7 +47,6 @@ function getStageInfo(download: ActiveDownload) {
           ? `${download.selectedFile}`
           : `Found ${download.resultsCount || 0} results`,
         color: 'text-blue-400',
-        borderColor: 'border-blue-500/50',
         bgColor: 'bg-blue-500/10',
         canDismiss: false,
       };
@@ -53,7 +59,6 @@ function getStageInfo(download: ActiveDownload) {
           ? `${download.progressPct.toFixed(0)}% - ${(download.speedKbps || 0).toFixed(0)} KB/s`
           : 'Starting...',
         color: 'text-terminal-green',
-        borderColor: 'border-terminal-green/50',
         bgColor: 'bg-terminal-green/10',
         progress: download.progressPct,
         canDismiss: false,
@@ -65,7 +70,6 @@ function getStageInfo(download: ActiveDownload) {
         subtitle: download.filename || download.query,
         detail: 'Download finished',
         color: 'text-terminal-green',
-        borderColor: 'border-terminal-green/50',
         bgColor: 'bg-terminal-green/10',
         showDownload: true,
         canDismiss: true,
@@ -77,7 +81,6 @@ function getStageInfo(download: ActiveDownload) {
         subtitle: download.query,
         detail: download.error || 'Unknown error',
         color: 'text-red-400',
-        borderColor: 'border-red-500/50',
         bgColor: 'bg-red-500/10',
         canDismiss: true,
       };
@@ -88,7 +91,6 @@ function getStageInfo(download: ActiveDownload) {
         subtitle: download.query,
         detail: 'Waiting for peer...',
         color: 'text-yellow-400',
-        borderColor: 'border-yellow-500/50',
         bgColor: 'bg-yellow-500/10',
         canDismiss: false,
       };
@@ -99,7 +101,6 @@ function getStageInfo(download: ActiveDownload) {
         subtitle: download.filename || download.query,
         detail: 'File in library',
         color: 'text-cyan-400',
-        borderColor: 'border-cyan-500/50',
         bgColor: 'bg-cyan-500/10',
         canDismiss: true,
       };
@@ -110,75 +111,69 @@ function getStageInfo(download: ActiveDownload) {
         subtitle: download.query,
         detail: '',
         color: 'text-gray-400',
-        borderColor: 'border-gray-500/50',
         bgColor: 'bg-gray-500/10',
         canDismiss: false,
       };
   }
 }
 
-interface ToastProps {
+interface QueueItemProps {
   download: ActiveDownload;
   onDismiss: () => void;
-  isCompact: boolean;
 }
 
-function Toast({ download, onDismiss, isCompact }: ToastProps) {
+function QueueItem({ download, onDismiss }: QueueItemProps) {
   const info = getStageInfo(download);
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, x: 50, scale: 0.9 }}
-      animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0, x: 50, scale: 0.9 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      className={`relative overflow-hidden rounded-lg border ${info.borderColor} ${info.bgColor} backdrop-blur-sm shadow-lg`}
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      className="relative overflow-hidden"
     >
-      <div className={`p-3 ${isCompact ? 'py-2' : ''}`}>
-        <div className="flex items-start gap-3">
-          <div className={`flex-shrink-0 mt-0.5 ${info.color}`}>
-            {info.icon}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className={`font-mono text-sm font-medium ${info.color}`}>
-                {info.title}
-              </span>
-              {info.canDismiss && (
-                <button
-                  onClick={onDismiss}
-                  className="flex-shrink-0 p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-            {!isCompact && (
-              <>
-                <div className="font-mono text-xs text-gray-300 truncate max-w-[200px]">
-                  {info.subtitle}
-                </div>
-                <div className="font-mono text-xs text-gray-500 truncate">
-                  {info.detail}
-                </div>
-              </>
-            )}
-          </div>
-          {info.showDownload && download.itemId > 0 && !isCompact && (
-            <a
-              href={api.getItemDownloadUrl(download.itemId)}
-              download
-              className="flex-shrink-0 px-2 py-1 text-xs font-mono bg-terminal-green/20 text-terminal-green rounded hover:bg-terminal-green/30 transition-colors"
-            >
-              Save
-            </a>
-          )}
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        {/* Left: stage icon */}
+        <div className={`flex-shrink-0 ${info.color}`}>
+          {info.icon}
         </div>
+
+        {/* Center: title + detail */}
+        <div className="flex-1 min-w-0">
+          <div className="font-mono text-xs text-gray-200 truncate">
+            {info.subtitle}
+          </div>
+          <div className="font-mono text-[11px] text-gray-500 truncate">
+            <span className={info.color}>{info.title}</span>
+            {info.detail && <> &middot; {info.detail}</>}
+          </div>
+        </div>
+
+        {/* Right: save link or dismiss button */}
+        {info.showDownload && download.itemId > 0 && (
+          <a
+            href={api.getItemDownloadUrl(download.itemId)}
+            download
+            className="flex-shrink-0 px-2 py-0.5 text-[11px] font-mono bg-terminal-green/20 text-terminal-green rounded hover:bg-terminal-green/30 transition-colors"
+          >
+            Save
+          </a>
+        )}
+        {info.canDismiss && (
+          <button
+            onClick={onDismiss}
+            className="flex-shrink-0 p-0.5 text-gray-600 hover:text-gray-300 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
-      {/* Progress bar */}
+
+      {/* Bottom progress bar for downloading items */}
       {info.progress !== undefined && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-700">
+        <div className="h-0.5 bg-dark-500">
           <motion.div
             className="h-full bg-terminal-green"
             initial={{ width: 0 }}
@@ -191,105 +186,195 @@ function Toast({ download, onDismiss, isCompact }: ToastProps) {
   );
 }
 
-export function DownloadToasts() {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const { activeDownloads, dismissActiveDownload } = useAppStore();
-  const { currentTrack } = useAudioPlayer();
+export function QueueSidebar() {
+  const [isOpen, setIsOpen] = useState(false);
+  const prevCountRef = useRef(0);
+  const [hasNewItems, setHasNewItems] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
-  // Adjust bottom position when media player is active
-  const bottomOffset = currentTrack ? 'bottom-[88px]' : 'bottom-4';
+  const { activeDownloads, dismissActiveDownload, currentTrack } = useAppStore(
+    useShallow((state) => ({
+      activeDownloads: state.activeDownloads,
+      dismissActiveDownload: state.dismissActiveDownload,
+      currentTrack: state.currentTrack,
+    }))
+  );
 
-  // Sort downloads: active (searching/processing/downloading) first, then by creation time
-  const sortedDownloads = Array.from(activeDownloads.values())
-    .sort((a, b) => {
-      const activeStages = ['searching', 'processing', 'selecting', 'downloading'];
-      const aActive = activeStages.includes(a.stage);
-      const bActive = activeStages.includes(b.stage);
-      if (aActive && !bActive) return -1;
-      if (!aActive && bActive) return 1;
-      return b.createdAt - a.createdAt;
-    });
+  const bottomOffset = currentTrack ? 'bottom-[72px]' : 'bottom-0';
 
-  if (sortedDownloads.length === 0) return null;
+  // Sort downloads: active first, then by creation time
+  const sortedDownloads = Array.from(activeDownloads.values()).sort((a, b) => {
+    const activeStages = ['searching', 'processing', 'selecting', 'downloading'];
+    const aActive = activeStages.includes(a.stage);
+    const bActive = activeStages.includes(b.stage);
+    if (aActive && !bActive) return -1;
+    if (!aActive && bActive) return 1;
+    return b.createdAt - a.createdAt;
+  });
 
-  const activeCount = sortedDownloads.filter(d =>
+  const totalCount = sortedDownloads.length;
+  const activeCount = sortedDownloads.filter((d) =>
     ['searching', 'processing', 'selecting', 'downloading'].includes(d.stage)
   ).length;
-  const completedCount = sortedDownloads.filter(d =>
+  const completedCount = sortedDownloads.filter((d) =>
     ['completed', 'duplicate'].includes(d.stage)
   ).length;
-  const failedCount = sortedDownloads.filter(d => d.stage === 'failed').length;
+  const failedCount = sortedDownloads.filter((d) => d.stage === 'failed').length;
+  const inactiveCount = completedCount + failedCount;
 
-  // Limit visible toasts when collapsed
-  const visibleDownloads = isExpanded ? sortedDownloads : sortedDownloads.slice(0, 3);
-  const hiddenCount = sortedDownloads.length - visibleDownloads.length;
+  const clearInactive = useCallback(() => {
+    for (const d of sortedDownloads) {
+      if (['completed', 'failed', 'duplicate'].includes(d.stage)) {
+        dismissActiveDownload(d.trackingId);
+      }
+    }
+  }, [sortedDownloads, dismissActiveDownload]);
+
+  // Pulse the tab when new items arrive
+  useEffect(() => {
+    if (totalCount > prevCountRef.current && !isOpen) {
+      setHasNewItems(true);
+      const timer = setTimeout(() => setHasNewItems(false), 2000);
+      return () => clearTimeout(timer);
+    }
+    prevCountRef.current = totalCount;
+  }, [totalCount, isOpen]);
+
+  // Close on Escape
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        setIsOpen(false);
+      }
+    },
+    [isOpen]
+  );
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
 
   return (
-    <div className={`fixed ${bottomOffset} right-4 z-50 flex flex-col items-end gap-2 max-h-[60vh] overflow-hidden pointer-events-none transition-all duration-300`}>
-      {/* Header with counts and expand toggle */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="pointer-events-auto flex items-center gap-3 px-3 py-2 rounded-lg bg-dark-800/90 backdrop-blur-sm border border-dark-500 shadow-lg"
+    <>
+      {/* Tab button — always visible on right edge */}
+      <button
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`fixed right-0 ${currentTrack ? 'bottom-[88px]' : 'bottom-4'} z-[45] flex items-center gap-1.5 px-1.5 py-3 rounded-l-lg border border-r-0 border-dark-500 bg-dark-800/95 backdrop-blur-sm hover:bg-dark-700 transition-all duration-200 ${
+          hasNewItems ? 'shadow-[0_0_12px_rgba(0,255,136,0.3)]' : ''
+        } ${isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+        title="Toggle queue"
       >
-        <div className="flex items-center gap-2 font-mono text-xs">
-          {activeCount > 0 && (
-            <span className="flex items-center gap-1 text-blue-400">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              {activeCount}
-            </span>
-          )}
-          {completedCount > 0 && (
-            <span className="flex items-center gap-1 text-terminal-green">
-              <CheckCircle2 className="w-3 h-3" />
-              {completedCount}
-            </span>
-          )}
-          {failedCount > 0 && (
-            <span className="flex items-center gap-1 text-red-400">
-              <XCircle className="w-3 h-3" />
-              {failedCount}
+        <div className="relative">
+          <ListMusic className="w-4 h-4 text-gray-400" />
+          {totalCount > 0 && (
+            <span
+              className={`absolute -top-2 -left-2.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full font-mono text-[10px] font-medium leading-none ${
+                activeCount > 0
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-dark-500 text-gray-300'
+              }`}
+            >
+              {totalCount}
             </span>
           )}
         </div>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="p-1 text-gray-400 hover:text-gray-200 transition-colors"
-          title={isExpanded ? 'Collapse' : 'Expand'}
-        >
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
-            <ChevronUp className="w-4 h-4" />
-          )}
-        </button>
-      </motion.div>
+      </button>
 
-      {/* Toast stack */}
-      <div className="flex flex-col gap-2 pointer-events-auto overflow-y-auto max-h-[calc(70vh-60px)] pr-1 w-72">
-        <AnimatePresence mode="popLayout">
-          {visibleDownloads.map((download) => (
-            <Toast
-              key={download.trackingId}
-              download={download}
-              onDismiss={() => dismissActiveDownload(download.trackingId)}
-              isCompact={!isExpanded}
-            />
-          ))}
-        </AnimatePresence>
-
-        {/* Show "more" indicator when collapsed */}
-        {hiddenCount > 0 && (
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            onClick={() => setIsExpanded(true)}
-            className="px-3 py-2 font-mono text-xs text-gray-400 bg-dark-700/50 rounded-lg border border-dark-500 hover:text-gray-200 hover:bg-dark-600/50 transition-colors"
+      {/* Sidebar panel */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            ref={sidebarRef}
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+            className={`fixed right-0 top-0 ${bottomOffset} z-[45] w-80 bg-dark-900/95 backdrop-blur-sm border-l border-dark-500 flex flex-col`}
           >
-            +{hiddenCount} more...
-          </motion.button>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-dark-500">
+              <div className="flex items-center gap-3">
+                <h2 className="font-mono text-sm font-medium text-gray-200">
+                  Queue
+                </h2>
+                <div className="flex items-center gap-2 font-mono text-[11px]">
+                  {activeCount > 0 && (
+                    <span className="flex items-center gap-1 text-blue-400">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      {activeCount}
+                    </span>
+                  )}
+                  {completedCount > 0 && (
+                    <span className="flex items-center gap-1 text-terminal-green">
+                      <CheckCircle2 className="w-3 h-3" />
+                      {completedCount}
+                    </span>
+                  )}
+                  {failedCount > 0 && (
+                    <span className="flex items-center gap-1 text-red-400">
+                      <XCircle className="w-3 h-3" />
+                      {failedCount}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {inactiveCount > 0 && (
+                  <button
+                    onClick={clearInactive}
+                    className="px-2 py-0.5 font-mono text-[11px] text-gray-500 hover:text-gray-300 hover:bg-dark-600 rounded transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable item list */}
+            <div className="flex-1 overflow-y-auto">
+              {sortedDownloads.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-600 font-mono text-xs gap-2">
+                  <ListMusic className="w-6 h-6" />
+                  <span>Queue is empty</span>
+                </div>
+              ) : (
+                <div className="divide-y divide-dark-600/50">
+                  <AnimatePresence mode="popLayout">
+                    {sortedDownloads.map((download) => (
+                      <QueueItem
+                        key={download.trackingId}
+                        download={download}
+                        onDismiss={() =>
+                          dismissActiveDownload(download.trackingId)
+                        }
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
-      </div>
-    </div>
+      </AnimatePresence>
+    </>
   );
 }

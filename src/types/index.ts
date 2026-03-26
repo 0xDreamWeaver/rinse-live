@@ -32,6 +32,10 @@ export interface Item {
   meta_musicbrainz_id: string | null;
   metadata_fetched_at: string | null;
   metadata_sources: string | null; // JSON array
+
+  // Audio properties from file
+  sample_rate: number | null;
+  bit_depth: number | null;
 }
 
 export interface List {
@@ -56,7 +60,16 @@ export interface User {
   username: string;
   email: string;
   email_verified: boolean;
+  display_name: string | null;
+  bio: string | null;
+  has_avatar: boolean;
+  role: string;
   created_at: string;
+}
+
+export interface UpdateProfileRequest {
+  display_name?: string | null;
+  bio?: string | null;
 }
 
 export interface ProgressUpdate {
@@ -82,7 +95,11 @@ export type WsEventType =
   | 'list_progress'
   | 'search_queued'
   | 'search_processing'
-  | 'search_failed';
+  | 'search_failed'
+  | 'upload_started'
+  | 'upload_progress'
+  | 'upload_completed'
+  | 'upload_failed';
 
 export interface WsSearchStarted {
   type: 'search_started';
@@ -205,6 +222,37 @@ export interface WsSearchFailed {
   client_id?: string;
 }
 
+// Upload-related WebSocket events
+export interface WsUploadStarted {
+  type: 'upload_started';
+  username: string;
+  filename: string;
+  file_size: number;
+}
+
+export interface WsUploadProgress {
+  type: 'upload_progress';
+  username: string;
+  filename: string;
+  bytes_sent: number;
+  total_bytes: number;
+  speed_kbps: number;
+}
+
+export interface WsUploadCompleted {
+  type: 'upload_completed';
+  username: string;
+  filename: string;
+  total_bytes: number;
+}
+
+export interface WsUploadFailed {
+  type: 'upload_failed';
+  username: string;
+  filename: string;
+  error: string;
+}
+
 export type WsEvent =
   | WsSearchStarted
   | WsSearchProgress
@@ -220,7 +268,11 @@ export type WsEvent =
   | WsListProgress
   | WsSearchQueued
   | WsSearchProcessing
-  | WsSearchFailed;
+  | WsSearchFailed
+  | WsUploadStarted
+  | WsUploadProgress
+  | WsUploadCompleted
+  | WsUploadFailed;
 
 // Current download/search state for UI
 export interface ActiveDownload {
@@ -246,6 +298,7 @@ export interface ActiveDownload {
 export interface ListTrackRequest {
   track: string;
   artist?: string;
+  client_id?: string;
 }
 
 export interface EnqueueSearchResponse {
@@ -323,7 +376,16 @@ export interface MetadataJobResponse {
 
 export interface MetadataJobStatusResponse {
   running: boolean;
+  total: number;
+  processed: number;
   items_without_metadata: number;
+}
+
+export interface CoverBackfillStatusResponse {
+  running: boolean;
+  total: number;
+  processed: number;
+  failed: number;
 }
 
 // Search history entry with username
@@ -406,4 +468,70 @@ export interface PlaylistTracksResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+// Upload/Sharing types
+export interface UploadStats {
+  active_uploads: number;
+  queued_uploads: number;
+  total_bytes_uploaded: number;
+  avg_speed_bytes_per_sec: number;
+  max_upload_slots: number;
+  max_upload_speed_kbps: number;
+  sharing_enabled: boolean;
+}
+
+export interface UploadConfigRequest {
+  max_upload_slots?: number;
+  max_upload_speed_kbps?: number;
+  sharing_enabled?: boolean;
+}
+
+export interface UploadConfigResponse {
+  max_upload_slots: number;
+  max_upload_speed_kbps: number;
+  sharing_enabled: boolean;
+}
+
+export interface UploadEntry {
+  id: number;
+  username: string;
+  filename: string;
+  file_size: number;
+  status: string;
+  queued_secs_ago: number;
+}
+
+export interface UploadsListResponse {
+  entries: UploadEntry[];
+}
+
+export interface SharingStats {
+  folder_count: number;
+  file_count: number;
+  enabled: boolean;
+}
+
+// Admin types
+export interface SystemStats {
+  total_items: number;
+  completed_items: number;
+  failed_items: number;
+  pending_items: number;
+  total_storage_bytes: number;
+  total_lists: number;
+  total_users: number;
+  items_with_metadata: number;
+  items_without_metadata: number;
+  items_with_cached_covers: number;
+  items_without_cached_covers: number;
+}
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  email: string | null;
+  role: string;
+  created_at: string;
+  has_avatar: boolean;
 }
