@@ -99,7 +99,10 @@ export type WsEventType =
   | 'upload_started'
   | 'upload_progress'
   | 'upload_completed'
-  | 'upload_failed';
+  | 'upload_failed'
+  | 'local_chat_message'
+  | 'chat_message'
+  | 'direct_message';
 
 export interface WsSearchStarted {
   type: 'search_started';
@@ -222,6 +225,98 @@ export interface WsSearchFailed {
   client_id?: string;
 }
 
+// Chat-related types
+export interface LocalChatMessage {
+  id: number;
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  has_avatar: boolean;
+  message: string;
+  created_at: string;
+}
+
+export interface SoulseekChatMessage {
+  username: string;
+  message: string;
+  timestamp: number;
+  incoming: boolean;
+  is_new: boolean;
+}
+
+export interface ShareSearchItem {
+  id: number;
+  filename: string;
+  meta_title: string | null;
+  meta_artist: string | null;
+  meta_album_art_url: string | null;
+  meta_duration_ms: number | null;
+}
+
+// Direct message types
+export interface DirectMessage {
+  id: number;
+  sender_id: number;
+  sender_username: string;
+  sender_display_name: string | null;
+  sender_has_avatar: boolean;
+  recipient_id: number;
+  recipient_username: string;
+  message: string;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface DmConversationSummary {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  has_avatar: boolean;
+  last_message: string;
+  last_message_at: string;
+  unread_count: number;
+}
+
+export interface UserSummary {
+  id: number;
+  username: string;
+  display_name: string | null;
+  has_avatar: boolean;
+}
+
+// Chat-related WebSocket events
+export interface WsLocalChatMessage {
+  type: 'local_chat_message';
+  id: number;
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  has_avatar: boolean;
+  message: string;
+  created_at: string;
+}
+
+export interface WsSoulseekChatMessage {
+  type: 'chat_message';
+  username: string;
+  message: string;
+  timestamp: number;
+  incoming: boolean;
+  is_new: boolean;
+}
+
+export interface WsDirectMessage {
+  type: 'direct_message';
+  id: number;
+  sender_id: number;
+  sender_username: string;
+  sender_display_name: string | null;
+  sender_has_avatar: boolean;
+  recipient_id: number;
+  message: string;
+  created_at: string;
+}
+
 // Upload-related WebSocket events
 export interface WsUploadStarted {
   type: 'upload_started';
@@ -272,7 +367,10 @@ export type WsEvent =
   | WsUploadStarted
   | WsUploadProgress
   | WsUploadCompleted
-  | WsUploadFailed;
+  | WsUploadFailed
+  | WsLocalChatMessage
+  | WsSoulseekChatMessage
+  | WsDirectMessage;
 
 // Current download/search state for UI
 export interface ActiveDownload {

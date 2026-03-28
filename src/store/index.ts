@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
-import type { Item, ProgressUpdate, User, WsEvent, ActiveDownload } from '../types';
+import type { Item, ProgressUpdate, User, WsEvent, ActiveDownload, LocalChatMessage, SoulseekChatMessage, DirectMessage, DmConversationSummary } from '../types';
 import { api } from '../lib/api';
 
 // Auto-cleanup timeout for completed downloads (30 seconds)
@@ -62,6 +62,46 @@ interface AppStore {
   // Search suggestions (cached already downloaded items)
   searchSuggestions: Item[];
   setSearchSuggestions: (items: Item[]) => void;
+
+  // Chat state
+  localChatMessages: LocalChatMessage[];
+  unreadLocalChat: number;
+  chatDrawerOpen: boolean;
+  queueDrawerOpen: boolean;
+  chatDrawerPrefill: string | null;
+  soulseekConversations: Map<string, SoulseekChatMessage[]>;
+  activeSoulseekConversation: string | null;
+  addLocalChatMessage: (msg: LocalChatMessage) => void;
+  setLocalChatMessages: (msgs: LocalChatMessage[]) => void;
+  prependLocalChatMessages: (msgs: LocalChatMessage[]) => void;
+  setChatDrawerOpen: (open: boolean) => void;
+  setQueueDrawerOpen: (open: boolean) => void;
+  openChatWithPrefill: (marker: string) => void;
+  clearChatDrawerPrefill: () => void;
+  markLocalChatRead: () => void;
+  setSoulseekConversations: (convos: Map<string, SoulseekChatMessage[]>) => void;
+  setActiveSoulseekConversation: (username: string | null) => void;
+  addSoulseekMessage: (msg: SoulseekChatMessage) => void;
+
+  // Direct message state
+  dmConversations: DmConversationSummary[];
+  dmThreads: Map<number, DirectMessage[]>;
+  activeDmUserId: number | null;
+  pendingChatTab: 'dm' | null;
+  setDmConversations: (convos: DmConversationSummary[]) => void;
+  setDmThread: (userId: number, messages: DirectMessage[]) => void;
+  prependDmMessages: (userId: number, messages: DirectMessage[]) => void;
+  addDirectMessage: (msg: DirectMessage) => void;
+  setActiveDmUserId: (userId: number | null) => void;
+  openDmWith: (userId: number) => void;
+  clearPendingChatTab: () => void;
+
+  // Chat draft persistence (in-memory only, survives navigation but not refresh)
+  localChatDraft: string;
+  dmDrafts: Map<number, string>;
+  setLocalChatDraft: (text: string) => void;
+  setDmDraft: (userId: number, text: string) => void;
+  clearDmDraft: (userId: number) => void;
 
   // Audio player state
   currentTrack: Item | null;
@@ -570,6 +610,96 @@ export const useAppStore = create<AppStore>()(
               // List progress updated - refresh lists
               return { listsNeedRefresh: true };
             }
+            case 'local_chat_message': {
+              // Deduplicate: skip if message with this ID already exists
+              if (state.localChatMessages.some(m => m.id === event.id)) {
+                return {};
+              }
+              const chatMsg: LocalChatMessage = {
+                id: event.id,
+                user_id: event.user_id,
+                username: event.username,
+                display_name: event.display_name,
+                has_avatar: event.has_avatar,
+                message: event.message,
+                created_at: event.created_at,
+              };
+              return {
+                localChatMessages: [...state.localChatMessages, chatMsg],
+                unreadLocalChat: state.chatDrawerOpen
+                  ? state.unreadLocalChat
+                  : state.unreadLocalChat + 1,
+              };
+            }
+            case 'chat_message': {
+              const slskMsg: SoulseekChatMessage = {
+                username: event.username,
+                message: event.message,
+                timestamp: event.timestamp,
+                incoming: event.incoming,
+                is_new: event.is_new,
+              };
+              const convos = new Map(state.soulseekConversations);
+              const existing = convos.get(event.username) || [];
+              convos.set(event.username, [...existing, slskMsg]);
+              return { soulseekConversations: convos };
+            }
+            case 'direct_message': {
+              const currentUserId = state.user?.id;
+              if (!currentUserId) return {};
+              // Only process if current user is sender or recipient
+              if (event.sender_id !== currentUserId && event.recipient_id !== currentUserId) {
+                return {};
+              }
+              const otherUserId = event.sender_id === currentUserId ? event.recipient_id : event.sender_id;
+              const dmMsg: DirectMessage = {
+                id: event.id,
+                sender_id: event.sender_id,
+                sender_username: event.sender_username,
+                sender_display_name: event.sender_display_name,
+                sender_has_avatar: event.sender_has_avatar,
+                recipient_id: event.recipient_id,
+                recipient_username: '', // Not sent in WS event, not needed for display
+                message: event.message,
+                read_at: null,
+                created_at: event.created_at,
+              };
+
+              // Update thread if loaded
+              const dmThreads = new Map(state.dmThreads);
+              const threadMsgs = dmThreads.get(otherUserId);
+              if (threadMsgs) {
+                if (!threadMsgs.some(m => m.id === event.id)) {
+                  dmThreads.set(otherUserId, [...threadMsgs, dmMsg]);
+                }
+              }
+
+              // Update conversation summaries
+              const dmConvos = [...state.dmConversations];
+              const convoIdx = dmConvos.findIndex(c => c.user_id === otherUserId);
+              if (convoIdx >= 0) {
+                const convo = { ...dmConvos[convoIdx] };
+                convo.last_message = event.message;
+                convo.last_message_at = event.created_at;
+                if (event.sender_id !== currentUserId && state.activeDmUserId !== otherUserId) {
+                  convo.unread_count += 1;
+                }
+                dmConvos.splice(convoIdx, 1);
+                dmConvos.unshift(convo);
+              } else {
+                dmConvos.unshift({
+                  user_id: otherUserId,
+                  username: event.sender_id === currentUserId ? '' : event.sender_username,
+                  display_name: event.sender_id === currentUserId ? null : event.sender_display_name,
+                  has_avatar: event.sender_id === currentUserId ? false : event.sender_has_avatar,
+                  last_message: event.message,
+                  last_message_at: event.created_at,
+                  unread_count: event.sender_id !== currentUserId ? 1 : 0,
+                });
+              }
+
+              return { dmThreads, dmConversations: dmConvos };
+            }
           }
 
           // Schedule auto-cleanup and progress cleanup after state update
@@ -662,6 +792,143 @@ export const useAppStore = create<AppStore>()(
       // Search suggestions
       searchSuggestions: [],
       setSearchSuggestions: (items) => set({ searchSuggestions: items }),
+
+      // Chat state
+      localChatMessages: [],
+      unreadLocalChat: 0,
+      chatDrawerOpen: false,
+      queueDrawerOpen: false,
+      chatDrawerPrefill: null,
+      soulseekConversations: new Map(),
+      activeSoulseekConversation: null,
+      addLocalChatMessage: (msg) =>
+        set((state) => ({
+          localChatMessages: [...state.localChatMessages, msg],
+          unreadLocalChat: state.chatDrawerOpen ? state.unreadLocalChat : state.unreadLocalChat + 1,
+        })),
+      setLocalChatMessages: (msgs) => set({ localChatMessages: msgs }),
+      prependLocalChatMessages: (msgs) =>
+        set((state) => ({
+          localChatMessages: [...msgs, ...state.localChatMessages],
+        })),
+      setChatDrawerOpen: (open) =>
+        set((state) => ({
+          chatDrawerOpen: open,
+          queueDrawerOpen: open ? false : state.queueDrawerOpen,
+          unreadLocalChat: open ? 0 : state.unreadLocalChat,
+          chatDrawerPrefill: open ? state.chatDrawerPrefill : null,
+        })),
+      setQueueDrawerOpen: (open) =>
+        set((state) => ({
+          queueDrawerOpen: open,
+          chatDrawerOpen: open ? false : state.chatDrawerOpen,
+        })),
+      openChatWithPrefill: (marker) =>
+        set((state) => ({
+          chatDrawerOpen: state.chatDrawerOpen || true,
+          queueDrawerOpen: state.chatDrawerOpen ? state.queueDrawerOpen : false,
+          chatDrawerPrefill: marker,
+        })),
+      clearChatDrawerPrefill: () => set({ chatDrawerPrefill: null }),
+      markLocalChatRead: () => set({ unreadLocalChat: 0 }),
+      setSoulseekConversations: (convos) => set({ soulseekConversations: convos }),
+      setActiveSoulseekConversation: (username) => set({ activeSoulseekConversation: username }),
+      addSoulseekMessage: (msg) =>
+        set((state) => {
+          const convos = new Map(state.soulseekConversations);
+          const existing = convos.get(msg.username) || [];
+          convos.set(msg.username, [...existing, msg]);
+          return { soulseekConversations: convos };
+        }),
+
+      // Direct message state
+      dmConversations: [],
+      dmThreads: new Map(),
+      activeDmUserId: null,
+      pendingChatTab: null,
+      setDmConversations: (convos) => set({ dmConversations: convos }),
+      setDmThread: (userId, messages) =>
+        set((state) => {
+          const threads = new Map(state.dmThreads);
+          threads.set(userId, messages);
+          return { dmThreads: threads };
+        }),
+      prependDmMessages: (userId, messages) =>
+        set((state) => {
+          const threads = new Map(state.dmThreads);
+          const existing = threads.get(userId) || [];
+          threads.set(userId, [...messages, ...existing]);
+          return { dmThreads: threads };
+        }),
+      addDirectMessage: (msg) =>
+        set((state) => {
+          const currentUserId = state.user?.id;
+          if (!currentUserId) return {};
+          // Determine the other user in this conversation
+          const otherUserId = msg.sender_id === currentUserId ? msg.recipient_id : msg.sender_id;
+
+          // Update thread if it exists
+          const threads = new Map(state.dmThreads);
+          const existing = threads.get(otherUserId);
+          if (existing) {
+            // Deduplicate
+            if (!existing.some(m => m.id === msg.id)) {
+              threads.set(otherUserId, [...existing, msg]);
+            }
+          }
+
+          // Update conversation summary
+          const convos = [...state.dmConversations];
+          const existingConvoIdx = convos.findIndex(c => c.user_id === otherUserId);
+          if (existingConvoIdx >= 0) {
+            const convo = { ...convos[existingConvoIdx] };
+            convo.last_message = msg.message;
+            convo.last_message_at = msg.created_at;
+            // Increment unread if message is from the other user and not active
+            if (msg.sender_id !== currentUserId && state.activeDmUserId !== otherUserId) {
+              convo.unread_count += 1;
+            }
+            convos.splice(existingConvoIdx, 1);
+            convos.unshift(convo); // Move to top
+          } else {
+            // New conversation
+            convos.unshift({
+              user_id: otherUserId,
+              username: msg.sender_id === currentUserId ? msg.recipient_username : msg.sender_username,
+              display_name: msg.sender_id === currentUserId ? null : msg.sender_display_name,
+              has_avatar: msg.sender_id === currentUserId ? false : msg.sender_has_avatar,
+              last_message: msg.message,
+              last_message_at: msg.created_at,
+              unread_count: msg.sender_id !== currentUserId ? 1 : 0,
+            });
+          }
+
+          return { dmThreads: threads, dmConversations: convos };
+        }),
+      setActiveDmUserId: (userId) => set({ activeDmUserId: userId }),
+      openDmWith: (userId) => set({ activeDmUserId: userId, pendingChatTab: 'dm' }),
+      clearPendingChatTab: () => set({ pendingChatTab: null }),
+
+      // Chat draft persistence
+      localChatDraft: '',
+      dmDrafts: new Map(),
+      setLocalChatDraft: (text) => set({ localChatDraft: text }),
+      setDmDraft: (userId, text) =>
+        set((state) => {
+          const drafts = new Map(state.dmDrafts);
+          if (text) {
+            drafts.set(userId, text);
+          } else {
+            drafts.delete(userId);
+          }
+          return { dmDrafts: drafts };
+        }),
+      clearDmDraft: (userId) =>
+        set((state) => {
+          const drafts = new Map(state.dmDrafts);
+          drafts.delete(userId);
+          return { dmDrafts: drafts };
+        }),
 
       // Audio player state
       currentTrack: null,
@@ -891,3 +1158,46 @@ export const useFrequencyData = () => {
     }))
   );
 };
+
+// Convenience hook for chat state
+export const useChat = () =>
+  useAppStore(
+    useShallow((state) => ({
+      localChatMessages: state.localChatMessages,
+      unreadLocalChat: state.unreadLocalChat,
+      chatDrawerOpen: state.chatDrawerOpen,
+      queueDrawerOpen: state.queueDrawerOpen,
+      chatDrawerPrefill: state.chatDrawerPrefill,
+      soulseekConversations: state.soulseekConversations,
+      activeSoulseekConversation: state.activeSoulseekConversation,
+      addLocalChatMessage: state.addLocalChatMessage,
+      setLocalChatMessages: state.setLocalChatMessages,
+      prependLocalChatMessages: state.prependLocalChatMessages,
+      setChatDrawerOpen: state.setChatDrawerOpen,
+      setQueueDrawerOpen: state.setQueueDrawerOpen,
+      openChatWithPrefill: state.openChatWithPrefill,
+      clearChatDrawerPrefill: state.clearChatDrawerPrefill,
+      markLocalChatRead: state.markLocalChatRead,
+      setSoulseekConversations: state.setSoulseekConversations,
+      setActiveSoulseekConversation: state.setActiveSoulseekConversation,
+      addSoulseekMessage: state.addSoulseekMessage,
+      // DM state
+      dmConversations: state.dmConversations,
+      dmThreads: state.dmThreads,
+      activeDmUserId: state.activeDmUserId,
+      pendingChatTab: state.pendingChatTab,
+      setDmConversations: state.setDmConversations,
+      setDmThread: state.setDmThread,
+      prependDmMessages: state.prependDmMessages,
+      addDirectMessage: state.addDirectMessage,
+      setActiveDmUserId: state.setActiveDmUserId,
+      openDmWith: state.openDmWith,
+      clearPendingChatTab: state.clearPendingChatTab,
+      // Draft state
+      localChatDraft: state.localChatDraft,
+      dmDrafts: state.dmDrafts,
+      setLocalChatDraft: state.setLocalChatDraft,
+      setDmDraft: state.setDmDraft,
+      clearDmDraft: state.clearDmDraft,
+    }))
+  );

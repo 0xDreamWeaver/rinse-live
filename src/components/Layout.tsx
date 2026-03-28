@@ -1,7 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { AudioPlayer } from './AudioPlayer';
-import { QueueSidebar } from './DownloadToasts';
+import { RightDrawers } from './RightDrawers';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { motion } from 'framer-motion';
 import { useAppStore } from '../store';
@@ -30,8 +30,8 @@ export function Layout() {
       {/* Audio Player */}
       <AudioPlayer />
 
-      {/* Queue Sidebar */}
-      <QueueSidebar />
+      {/* Right-edge drawers (Chat + Queue) */}
+      <RightDrawers />
 
       {/* Ambient grid background */}
       <div className="fixed inset-0 opacity-5 pointer-events-none">

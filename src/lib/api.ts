@@ -5,7 +5,8 @@ import type {
   ListTrackRequest,
   MusicService, OAuthConnectionStatus, OAuthConnectResponse, OAuthCallbackResponse, PlaylistsResponse, PlaylistTracksResponse,
   UploadStats, UploadConfigRequest, UploadConfigResponse, UploadsListResponse, SharingStats,
-  SystemStats, AdminUser, CoverBackfillStatusResponse
+  SystemStats, AdminUser, CoverBackfillStatusResponse,
+  LocalChatMessage, ShareSearchItem, SoulseekChatMessage
 } from '../types';
 import { useAppStore } from '../store';
 
@@ -457,6 +458,69 @@ class ApiClient {
   async rescanShares(): Promise<SharingStats> {
     return this.request('/api/sharing/rescan', {
       method: 'POST',
+    });
+  }
+
+  // Local Chat
+  async getLocalChatMessages(limit: number = 50, beforeId?: number): Promise<LocalChatMessage[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (beforeId) params.set('before_id', String(beforeId));
+    return this.request(`/api/local-chat/messages?${params}`);
+  }
+
+  async sendLocalChatMessage(message: string): Promise<LocalChatMessage> {
+    return this.request('/api/local-chat/send', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+  }
+
+  async searchItemsForShare(query: string): Promise<ShareSearchItem[]> {
+    return this.request(`/api/local-chat/search-items?q=${encodeURIComponent(query)}`);
+  }
+
+  async searchListsForShare(query: string): Promise<import('../types').List[]> {
+    return this.request(`/api/local-chat/search-lists?q=${encodeURIComponent(query)}`);
+  }
+
+  // Direct Messages
+  async getDmConversations(): Promise<import('../types').DmConversationSummary[]> {
+    return this.request('/api/direct-messages');
+  }
+
+  async getDmThread(userId: number, limit: number = 50, beforeId?: number): Promise<import('../types').DirectMessage[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (beforeId) params.set('before_id', String(beforeId));
+    return this.request(`/api/direct-messages/${userId}?${params}`);
+  }
+
+  async sendDirectMessage(userId: number, message: string): Promise<import('../types').DirectMessage> {
+    return this.request(`/api/direct-messages/${userId}`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+  }
+
+  async markDmsRead(userId: number): Promise<void> {
+    return this.request(`/api/direct-messages/${userId}/read`, {
+      method: 'PUT',
+    });
+  }
+
+  async searchUsers(query: string): Promise<import('../types').UserSummary[]> {
+    return this.request(`/api/users/search?q=${encodeURIComponent(query)}`);
+  }
+
+  // Soulseek Chat (admin only)
+  async getSoulseekMessages(username?: string): Promise<SoulseekChatMessage[]> {
+    const params = username ? `?username=${encodeURIComponent(username)}` : '';
+    return this.request(`/api/chat/messages${params}`);
+  }
+
+  async sendSoulseekMessage(username: string, message: string): Promise<{ status: string; username: string }> {
+    return this.request('/api/chat/send', {
+      method: 'POST',
+      body: JSON.stringify({ username, message }),
     });
   }
 

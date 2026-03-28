@@ -1,7 +1,8 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Download, Database, List, User, LogOut, Info, LogIn, History } from 'lucide-react';
+import { Download, Database, List, User, LogOut, Info, LogIn, History, MessageSquare } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useAuth } from '../store';
+import { useAuth, useAppStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import RinseLogo from '../assets/RinseLogo';
 
 const navItems = [
@@ -9,12 +10,14 @@ const navItems = [
   { to: '/items', icon: Database, label: 'Items' },
   { to: '/lists', icon: List, label: 'Lists' },
   { to: '/history', icon: History, label: 'History' },
+  { to: '/chat', icon: MessageSquare, label: 'Chat', badge: true },
   { to: '/profile', icon: User, label: 'Profile' },
 ];
 
 export function Sidebar() {
   const navigate = useNavigate();
   const { isAuthenticated, clearAuth } = useAuth();
+  const unreadLocalChat = useAppStore(useShallow((s) => s.unreadLocalChat));
 
   const handleLogout = () => {
     clearAuth();
@@ -66,11 +69,16 @@ export function Sidebar() {
                           }}
                         />
                       )}
-                      <item.icon
-                        className={`w-5 h-5 relative z-10 transition-transform duration-200 ${
-                          isActive ? 'scale-110' : 'group-hover:scale-110'
-                        }`}
-                      />
+                      <div className="relative">
+                        <item.icon
+                          className={`w-5 h-5 relative z-10 transition-transform duration-200 ${
+                            isActive ? 'scale-110' : 'group-hover:scale-110'
+                          }`}
+                        />
+                        {item.badge && unreadLocalChat > 0 && !isActive && (
+                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-terminal-green rounded-full z-20" />
+                        )}
+                      </div>
 
                       {/* Tooltip */}
                       <div

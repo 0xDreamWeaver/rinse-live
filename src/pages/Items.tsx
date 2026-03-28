@@ -9,7 +9,7 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table';
 import { motion } from 'framer-motion';
-import { Download, Trash2, Search, CheckSquare, Square, Loader2, Play, Pause, RotateCcw, RefreshCw } from 'lucide-react';
+import { Download, Trash2, Search, CheckSquare, Square, Loader2, Play, Pause, RotateCcw, RefreshCw, MessageSquare } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore, useAudioPlayer } from '../store';
 import { useShallow } from 'zustand/react/shallow';
@@ -57,7 +57,7 @@ export function Items() {
   const [globalFilter, setGlobalFilter] = useState('');
   const queryClient = useQueryClient();
 
-  const { selectedItemIds, toggleItemSelection, clearItemSelection, itemsNeedRefresh, setItemsNeedRefresh } =
+  const { selectedItemIds, toggleItemSelection, clearItemSelection, itemsNeedRefresh, setItemsNeedRefresh, openChatWithPrefill } =
     useAppStore(
       useShallow((state) => ({
         selectedItemIds: state.selectedItemIds,
@@ -65,6 +65,7 @@ export function Items() {
         clearItemSelection: state.clearItemSelection,
         itemsNeedRefresh: state.itemsNeedRefresh,
         setItemsNeedRefresh: state.setItemsNeedRefresh,
+        openChatWithPrefill: state.openChatWithPrefill,
       }))
     );
   const { currentTrack, isPlaying, playTrackFromQueue, pausePlayback } = useAudioPlayer();
@@ -330,14 +331,23 @@ export function Items() {
         cell: ({ row }) => (
           <div className="flex gap-2">
             {row.original.download_status === 'completed' && (
-              <a
-                href={api.getItemDownloadUrl(row.original.id)}
-                download
-                className="px-3 py-1 text-sm btn-secondary"
-                title="Download file"
-              >
-                <Download className="w-4 h-4" />
-              </a>
+              <>
+                <button
+                  onClick={() => openChatWithPrefill(`[track:${row.original.id}]`)}
+                  className="px-3 py-1 text-sm btn-secondary"
+                  title="Share in chat"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                </button>
+                <a
+                  href={api.getItemDownloadUrl(row.original.id)}
+                  download
+                  className="px-3 py-1 text-sm btn-secondary"
+                  title="Download file"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+              </>
             )}
             {row.original.download_status === 'failed' && (
               <button
@@ -359,7 +369,7 @@ export function Items() {
         ),
       }),
     ],
-    [items, selectedItemIds, toggleItemSelection, clearItemSelection, currentTrack, isPlaying, playTrackFromQueue, pausePlayback, retryMutation]
+    [items, selectedItemIds, toggleItemSelection, clearItemSelection, currentTrack, isPlaying, playTrackFromQueue, pausePlayback, retryMutation, openChatWithPrefill]
   );
 
   const table = useReactTable({

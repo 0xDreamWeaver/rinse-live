@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Download, Trash2, Search, CheckSquare, Square, Calendar, FileText, ChevronDown } from 'lucide-react';
+import { Download, Trash2, Search, CheckSquare, Square, Calendar, FileText, ChevronDown, MessageSquare } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store';
 import { useShallow } from 'zustand/react/shallow';
@@ -11,7 +11,7 @@ export function Lists() {
   const [searchQuery, setSearchQuery] = useState('');
   const queryClient = useQueryClient();
 
-  const { selectedListIds, toggleListSelection, clearListSelection, listsNeedRefresh, setListsNeedRefresh } =
+  const { selectedListIds, toggleListSelection, clearListSelection, listsNeedRefresh, setListsNeedRefresh, openChatWithPrefill } =
     useAppStore(
       useShallow((state) => ({
         selectedListIds: state.selectedListIds,
@@ -19,6 +19,7 @@ export function Lists() {
         clearListSelection: state.clearListSelection,
         listsNeedRefresh: state.listsNeedRefresh,
         setListsNeedRefresh: state.setListsNeedRefresh,
+        openChatWithPrefill: state.openChatWithPrefill,
       }))
     );
 
@@ -232,17 +233,26 @@ export function Lists() {
                 className={`card-terminal p-6 relative ${
                   isSelected ? 'border-terminal-green terminal-box-glow' : ''}`}
               >
-                {/* Selection Checkbox */}
-                <button
-                  onClick={() => toggleListSelection(list.id)}
-                  className="absolute top-6 right-6 transition-colors text-terminal-green hover:text-terminal-green-dark"
-                >
-                  {isSelected ? (
-                    <CheckSquare className="w-5 h-5" />
-                  ) : (
-                    <Square className="w-5 h-5" />
-                  )}
-                </button>
+                {/* Share + Selection Checkbox */}
+                <div className="absolute top-6 right-6 flex items-center gap-2">
+                  <button
+                    onClick={() => openChatWithPrefill(`[list:${list.id}]`)}
+                    className="transition-colors text-gray-500 hover:text-terminal-green"
+                    title="Share in chat"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => toggleListSelection(list.id)}
+                    className="transition-colors text-terminal-green hover:text-terminal-green-dark"
+                  >
+                    {isSelected ? (
+                      <CheckSquare className="w-5 h-5" />
+                    ) : (
+                      <Square className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
 
                 {/* List Info */}
                 <Link to={`/lists/${list.id}`} className="block space-y-4">

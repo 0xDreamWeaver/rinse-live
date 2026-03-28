@@ -17,6 +17,7 @@ import { VerifyEmail } from './pages/VerifyEmail';
 import { About } from './pages/About';
 import { Admin } from './pages/Admin';
 import { SearchHistory } from './pages/SearchHistory';
+import { Chat } from './pages/Chat';
 import { OAuthCallback } from './pages/OAuthCallback';
 import { useAuth } from './store';
 import { api } from './lib/api';
@@ -104,6 +105,7 @@ function App() {
               <Route path="lists" element={<Lists />} />
               <Route path="lists/:id" element={<ListDetail />} />
               <Route path="history" element={<SearchHistory />} />
+              <Route path="chat" element={<Chat />} />
               <Route path="profile" element={<Profile />} />
               <Route path="admin" element={<Admin />} />
               <Route path="about" element={<About />} />
